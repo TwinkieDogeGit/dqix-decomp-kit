@@ -19,6 +19,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import sys
 import tempfile
 import time
@@ -53,6 +54,36 @@ def load(mod):
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     return m
+
+
+def bash_path():
+    # Respect the configured tool PATH, including Git's actual usr/bin executable on Windows.
+    return shutil.which("bash")
+
+
+@check("shell regressions use the configured Bash and fail closed when it is absent",
+       "hardcoded Git/bin launchers ignored the actual executable selected by PATH, delaying "
+       "maintenance behind an idle launcher with inherited output pipes")
+def _bash_from_path():
+    previous = os.environ.get("PATH")
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            selected = os.path.join(d, "bash.exe" if os.name == "nt" else "bash")
+            with open(selected, "w") as fh:
+                fh.write("fixture executable\n")
+            os.chmod(selected, 0o700)
+            os.environ["PATH"] = d
+            got = bash_path()
+            if not got or os.path.normcase(os.path.abspath(got)) != os.path.normcase(selected):
+                return "did not select the Bash executable in the configured PATH: " + repr(got)
+            os.environ["PATH"] = os.path.join(d, "absent")
+            if bash_path() is not None:
+                return "invented a Bash command when none was available"
+    finally:
+        if previous is None:
+            os.environ.pop("PATH", None)
+        else:
+            os.environ["PATH"] = previous
 
 
 # ---------------------------------------------------------------- resumable.py
@@ -1250,9 +1281,9 @@ def _staging_sweep_keeps_match():
         os.makedirs(os.path.join(d, "wip"))
         with open(os.path.join(d, "wip", "0201aaaa.cpp"), "w", encoding="utf-8") as fh:
             fh.write("// USA: func_0201aaaa\n")
-        bash = "C:/Program Files/Git/bin/bash.exe"
-        if not os.path.isfile(bash):
-            bash = "bash"
+        bash = bash_path()
+        if not bash:
+            return "bash unavailable for behavioural staging sweep test"
         r = subprocess.run([bash, "-c", script], capture_output=True, text=True)
         if r.returncode != 0:
             return "sweep block failed to run: %s" % (r.stderr or "").strip()[:200]
@@ -1679,7 +1710,7 @@ def _finish_bulk_snapshot_behaviour():
     if addr_begin < 0 or addr_end < addr_begin: return "address reader missing"
     address_reader = src[addr_begin:addr_end]
     if 'git ls-files --error-unmatch "$f"' in src: return "per-file Git query remains"
-    bash = "C:/Program Files/Git/bin/bash.exe" if os.name == "nt" else shutil.which("bash")
+    bash = bash_path()
     if not bash: return "bash unavailable for behavioural snapshot test"
     for mode in ("valid","empty","git-error","missing","unreadable","truncated","load-error"):
         os.makedirs(f"{SP}/handwork", exist_ok=True)
