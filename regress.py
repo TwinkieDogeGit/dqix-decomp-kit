@@ -57,6 +57,40 @@ def load(mod):
 
 # ---------------------------------------------------------------- resumable.py
 
+@check("fullstop derives only script basenames from a checkout path with spaces",
+       "xargs split the checkout path into words, adding generic directory names to the CPU-job "
+       "regex and making --hard select unrelated Codex processes")
+def _fullstop_cpu_names_with_spaces():
+    import shlex
+    import shutil
+    import subprocess
+    source = open(f"{KIT}/fullstop.sh", encoding="utf-8").read()
+    start = source.find("_cpunames=")
+    end = source.find("CPUJOBS=", start)
+    if start < 0 or end < 0:
+        return "cannot locate the CPU script-name enumeration"
+    with tempfile.TemporaryDirectory(prefix="dqix stop path ") as directory:
+        checkout = os.path.join(directory, "checkout with spaces")
+        os.makedirs(checkout)
+        for name in ("one.py", "two.sh", "ignore.txt"):
+            open(os.path.join(checkout, name), "w").close()
+        script = ("KIT=" + shlex.quote(checkout.replace("\\", "/")) + "\n"
+                  + source[start:end] + '\nprintf "%s\\n" "$_cpunames"\n')
+        script_path = os.path.join(directory, "enumerate.sh")
+        with open(script_path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(script)
+        bash = "C:/Program Files/Git/bin/bash.exe"
+        if not os.path.isfile(bash):
+            bash = shutil.which("bash") or "bash"
+        result = subprocess.run([bash, script_path.replace("\\", "/")],
+                                capture_output=True, text=True, timeout=15)
+        if result.returncode:
+            return "enumeration failed: " + result.stderr.strip()[:200]
+        names = set(result.stdout.strip().split("|"))
+        if names != {r"one\.py", r"two\.sh"}:
+            return "CPU names include path fragments or omit scripts: %r" % sorted(names)
+    return None
+
 @check("distances() ignores hex tails and size deltas",
        "reading '9/0xb4 bytes diff' as 4 bytes told a worker a barely-started function was nearly "
        "done; reading 'SIZE+4' or '-4 vs slot' as a diff distance did the same")
@@ -935,23 +969,41 @@ def _levercheck_boards():
     open(doc, "w").write("cites 02133333\n")
     env = {**os.environ, "LEVERCHECK_TSV": os.path.join(d, "none.tsv"), "LEVERCHECK_DOCS": doc,
            "LEVERCHECK_DECLINED": os.path.join(d, "none.txt"), "LEVERCHECK_BOARDS": boards,
-           "LEVERCHECK_CFG": cfg, "LEVERWATCH_SEEN": os.path.join(d, "seen.txt")}
+           "LEVERCHECK_CFG": cfg, "LEVERWATCH_SEEN": os.path.join(d, "seen.txt"),
+           "LEVERWATCH_MAX_CYCLES": "1"}
     r = subprocess.run([sys.executable, f"{KIT}/levercheck.py", "--keys"], capture_output=True, text=True, env=env)
     keys = [ln.split()[0] for ln in r.stdout.splitlines() if ln.strip()]
     if keys != ["02011111"] or r.returncode != 1:
         return "levercheck --keys gave %s (exit %d); expected only the landed uncited 02011111" % (keys, r.returncode)
     bash = shutil.which("bash") or "bash"
     first = subprocess.run([bash, f"{KIT}/leverwatch.sh", "--once", "1"], capture_output=True, text=True,
-                           env=env, timeout=60)
+                           env=env, timeout=15)
     if first.returncode != 0 or first.stdout.count("LEVER NEEDS PROMOTING") != 1 or "02011111" not in first.stdout:
         return "leverwatch --once did not fire exactly once on 02011111: %r" % first.stdout[:200]
-    try:
-        again = subprocess.run([bash, f"{KIT}/leverwatch.sh", "--once", "1"], capture_output=True, text=True,
-                               env=env, timeout=5)
-        return "leverwatch --once exited on an already-announced lever: %r" % again.stdout[:200]
-    except subprocess.TimeoutExpired as e:
-        if e.stdout and b"LEVER" in (e.stdout if isinstance(e.stdout, bytes) else e.stdout.encode()):
-            return "leverwatch re-announced a lever it had already announced"
+    # Bound the observation without timing out an infinite MSYS shell. On Windows,
+    # descendants can keep its captured pipes open after subprocess.run kills it.
+    # Count real checker calls to prove --once keeps watching after a seen lever.
+    bindir = os.path.join(d, "bin")
+    os.makedirs(bindir)
+    wrapper = os.path.join(bindir, "python")
+    with open(wrapper, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write('#!/usr/bin/env bash\n'
+                 'case "$1" in */levercheck.py) printf "poll\\n" >> "$LEVERWATCH_TEST_POLLS" ;; esac\n'
+                 'exec "$LEVERWATCH_TEST_PYTHON" "$@"\n')
+    os.chmod(wrapper, 0o755)
+    polls = os.path.join(d, "polls.txt")
+    again = subprocess.run([bash, f"{KIT}/leverwatch.sh", "--once", "1"], capture_output=True, text=True,
+                           env={**env, "LEVERWATCH_MAX_CYCLES": "2",
+                                "PATH": bindir + os.pathsep + env.get("PATH", ""),
+                                "LEVERWATCH_TEST_POLLS": polls.replace("\\", "/"),
+                                "LEVERWATCH_TEST_PYTHON": sys.executable.replace("\\", "/")},
+                           timeout=15)
+    if again.returncode != 0:
+        return "bounded leverwatch observation failed: %r" % again.stderr[:200]
+    if "LEVER" in again.stdout:
+        return "leverwatch re-announced a lever it had already announced"
+    if not os.path.exists(polls) or open(polls).read().splitlines() != ["poll", "poll"]:
+        return "leverwatch --once did not check twice after an already-announced lever"
     return None
 
 
