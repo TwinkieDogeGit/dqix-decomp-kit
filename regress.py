@@ -756,8 +756,9 @@ def _r56_used_input_default():
     if C.diagnostic_r56_drop_last_arg in C.RULES:
         return "diagnostic deletion is enabled for a used input"
     for label, candidate in C.neighbours(text):
-        if label.startswith("droparg:") or prototype not in candidate or call not in candidate:
-            return "default candidate changed the used-third-input call contract: " + label
+        signatures = re.findall(r'\bfunc_0205e330\s*\(([^()]*)\)', candidate)
+        if label.startswith("droparg:") or len(signatures) != 3 or any(args.count(',') != 2 for args in signatures):
+            return "default candidate deleted the used-third-input arity: " + label
     return None
 
 
