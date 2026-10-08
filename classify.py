@@ -66,6 +66,7 @@ def _s24(v):
 
 _THM_BR = {10, 25, 30, 31}   # R_ARM_THM_PC22 / THM_CALL / THM_JUMP*
 _CTX = {}
+_TARGET_ISA = {}
 
 
 def _ctx(MOD):
@@ -109,11 +110,17 @@ def _ctx(MOD):
     else:
         base = min(int(m, 16) for m in re.findall(r'start:0x([0-9a-f]+)', _dl))
     symaddr = buildcfg.lcf_symbols()
+    target_bindings = {}
     for p in glob.glob(f"{REPO}/config/usa/arm9/**/symbols.txt", recursive=True):
         for l in open(p):
             m = re.match(r'(\S+)\s+kind:\w+[^\n]*?addr:0x([0-9a-fA-F]+)', l)
             if m:
-                symaddr[m.group(1)] = int(m.group(2), 16)
+                name, address = m.group(1), int(m.group(2), 16)
+                symaddr[name] = address
+                function = re.search(r'kind:function\((arm|thumb),', l)
+                target_bindings.setdefault(name, set()).add((address, function.group(1) if function else None))
+    _TARGET_ISA[MOD] = {name: next(iter(rows))[1] if len(rows) == 1 else None
+                        for name, rows in target_bindings.items()}
     # keep the ISA: thumb needs a different size tolerance, reloc mask and branch decode below.
     sizes = {m.group(1).lower(): (int(m.group(3), 16), m.group(2)) for m in
              re.finditer(rf'{ANCH}{PRE}({HEXC}{{8}}) kind:function\((arm|thumb),size=0x({HEXC}+)\)',
@@ -212,13 +219,14 @@ def classify(MOD, cands, workdir=None, names=None):
             masked = set()
             for sec in elf.iter_sections():
                 if sec.name in ('.rel' + _want, '.rela' + _want) and hasattr(sec, 'iter_relocations'):
+                    reloc_symbols = elf.get_section(sec['sh_link'])
                     for rr in sec.iter_relocations():
                         # a thumb BL/BLX pair sits at a HALFWORD offset and spans 4 bytes from
                         # r_offset; rounding down to a word leaves 2 bytes unmasked -> false BYTEDIFF.
                         o = rr['r_offset']
                         masked.update(range(o, o + 4) if rr['r_info_type'] in _THM_BR
                                       else range(o & ~3, (o & ~3) + 4))
-                        relocs.append(rr)
+                        relocs.append((rr, reloc_symbols))
             if [i for i in range(min(len(mine), len(orig)))
                     if i not in masked and mine[i] != orig[i]]:
                 out[addr] = 'BYTEDIFF'; continue
@@ -234,11 +242,12 @@ def classify(MOD, cands, workdir=None, names=None):
             if [u for u in undef if u not in symaddr]:
                 out[addr] = 'UNDEF'; continue
             verdict = 'TRUSTED'
-            for rr in relocs:
+            for rr, reloc_symbols in relocs:
                 off = rr['r_offset']; typ = rr['r_info_type']
                 if off + 4 > slot:
                     continue
-                sym = symtab.get_symbol(rr['r_info_sym']).name
+                target_symbol = reloc_symbols.get_symbol(rr['r_info_sym'])
+                sym = target_symbol.name
                 S = symaddr.get(sym)
                 pi = int.from_bytes(orig[off:off + 4], 'little')
                 if typ in (1, 28, 29):                       # ARM branch (bl/b/bCC)
@@ -262,12 +271,24 @@ def classify(MOD, cands, workdir=None, names=None):
                     elif (S & ~1) != tgt:
                         verdict = 'RELOCWRONG'; break
                 elif typ == 2:                               # ABS32 (.word data/func pointer)
-                    A = rr['r_addend'] if rr.is_RELA() else int.from_bytes(mine[off:off + 4], 'little')
+                    word = int.from_bytes(mine[off:off + 4], 'little')
+                    A = rr['r_addend'] if rr.is_RELA() else word
+                    if rr.is_RELA() and word:
+                        verdict = 'RISKY'
                     if S is None:
                         verdict = 'RISKY'
-                    # ABS32 to a THUMB function has bit0 set by the linker (interworking) -> S+A+1.
-                    elif pi not in (((S + A) & 0xFFFFFFFF), ((S + A + 1) & 0xFFFFFFFF)):
-                        verdict = 'RELOCWRONG'; break
+                    else:
+                        expected = (S + A) & 0xFFFFFFFF
+                        if target_symbol['st_info']['type'] == 'STT_FUNC':
+                            target_isa = _TARGET_ISA.get(MOD, {}).get(sym)
+                            if target_isa not in ('arm', 'thumb'):
+                                if pi not in (expected, expected | 1):
+                                    verdict = 'RELOCWRONG'; break
+                                verdict = 'RISKY'; continue
+                            if target_isa == 'thumb':
+                                expected |= 1
+                        if pi != expected:
+                            verdict = 'RELOCWRONG'; break
                 else:
                     verdict = 'RISKY'
             out[addr] = verdict
