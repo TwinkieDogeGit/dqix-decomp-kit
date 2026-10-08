@@ -79,9 +79,7 @@ def _fullstop_cpu_names_with_spaces():
         script_path = os.path.join(directory, "enumerate.sh")
         with open(script_path, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(script)
-        bash = "C:/Program Files/Git/bin/bash.exe"
-        if not os.path.isfile(bash):
-            bash = shutil.which("bash") or "bash"
+        bash = shutil.which("bash") or "bash"
         result = subprocess.run([bash, script_path.replace("\\", "/")],
                                 capture_output=True, text=True, timeout=15)
         if result.returncode:
@@ -1490,6 +1488,68 @@ def _prready():
         code, out = prready("--hook", stdin=json.dumps({"tool_input": {"command": "git status"}}))
         if code != 0:
             return f"the hook blocked a command that opens no pull request: exit {code} {out.strip()[-200:]}"
+    return None
+
+
+@check("the classifier resolves real timer-table RELA addends and refuses a wrong table",
+       "SetTimerOverflowCallback at main:020c6c48 matched every instruction, but classify read "
+       "zero in-place pool words instead of the explicit +0x30/+0x38/+0x34 RELA addends and "
+       "rejected it as RELOCWRONG; masking those words must not accept a different real table")
+def _classify_timer_rela():
+    import gc
+    import io
+    from elftools.elf.elffile import ELFFile
+    C = load("classify")
+    source = open(f"{KIT}/regress_fixtures/TimerCallbackRela_020c6c48.cpp", encoding="utf-8").read()
+    addr = "020c6c48"
+    # A fresh module and private state keep the negative out of the dispatch/cache pools.
+    with tempfile.TemporaryDirectory(prefix="dqix classifier rela ") as d:
+        C.SP = d
+        try:
+            good = C.classify("main", {addr: source}, workdir=f"{d}/good")
+            if good != {addr: "TRUSTED"}:
+                return "the landed timer setter classified as %s" % good
+            with open(f"{d}/good/c.o", "rb") as fh:
+                elf = ELFFile(io.BytesIO(fh.read()))
+            text = elf.get_section_by_name(".text").data()
+            symtab = elf.get_section_by_name(".symtab")
+            exports = [s.name for s in symtab.iter_symbols() if s["st_info"]["type"] == "STT_FUNC"
+                       and s["st_info"]["bind"] == "STB_GLOBAL" and s["st_shndx"] != "SHN_UNDEF"]
+            if len(text) != 72 or exports != ["_Z24SetTimerOverflowCallbackiPFviEi"]:
+                return "fixture size/export changed: %s / %s" % (len(text), exports)
+            pristine, base, symaddr, _sizes, _sections = C._ctx("main")
+            orig = pristine[int(addr, 16) - base:int(addr, 16) - base + len(text)]
+            found = []
+            for sec in elf.iter_sections():
+                if sec.name not in (".rel.text", ".rela.text"):
+                    continue
+                for rr in sec.iter_relocations():
+                    if rr["r_info_type"] != 2:
+                        continue
+                    off = rr["r_offset"]
+                    name = symtab.get_symbol(rr["r_info_sym"]).name
+                    if not rr.is_RELA() or name != "data_0211127c":
+                        return "fixture lost its genuine explicit table addends"
+                    word = int.from_bytes(text[off:off + 4], "little")
+                    target = int.from_bytes(orig[off:off + 4], "little")
+                    if word != 0 or target != (symaddr[name] + rr["r_addend"]) & 0xffffffff:
+                        return "fixture pool at +%x does not prove a zero in-place RELA word" % off
+                    found.append((off, rr["r_addend"]))
+            if found != [(0x3c, 0x30), (0x40, 0x38), (0x44, 0x34)]:
+                return "timer-table addends changed: %s" % found
+            wrong = source.replace("data_0211127c", "data_021112e0")
+            if symaddr["data_021112e0"] == symaddr["data_0211127c"]:
+                return "negative fixture no longer names a different real global"
+            bad = C.classify("main", {addr: wrong}, workdir=f"{d}/wrong")
+            if bad != {addr: "RELOCWRONG"}:
+                return "the wrong real table classified as %s" % bad
+            with open(f"{d}/wrong/c.o", "rb") as fh:
+                negative = ELFFile(io.BytesIO(fh.read()))
+            if negative.get_section_by_name(".text").data() != text:
+                return "negative changed instructions rather than only relocation targets"
+        finally:
+            # classify's ELF objects can form cycles holding c.o open on Windows.
+            gc.collect()
     return None
 
 
