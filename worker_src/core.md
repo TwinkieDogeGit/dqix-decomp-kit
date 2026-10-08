@@ -357,6 +357,14 @@ expression, hoisting an operand first. Declaration order is a CALLEE-SAVED lever
 here. Each site is independent — with several such blocks the answer may be swapping one and not the
 other, so give `colorsweep` depth for the combinations instead of rewriting by hand.
 
+### FIRST-USE POINTER BINDING CAN CLOSE A SCRATCH CYCLE
+When an early copy retains a scratch-register cycle, bind the entry pointer after its first
+direct field read rather than keeping the pointer live earlier. On `main:020cdc7c` (324 bytes),
+reading the first halfword through the returned history base, then binding the entry pointer for
+the remaining fields, closed REGPERM 6. Its ordered volatile complete-entry reads were justified
+by the actual IRQ producer and exact shared history storage, not by the residual alone; preserve
+the supported access widths and order.
+
 ### A CALLEE-SAVED ROTATION IS VREG NUMBERING — set it by declaration order (`0215d63c`, `021615bc`)
 Simplify scans vregs in ascending order and the last node pushed takes the lowest free register, so
 "X must colour before Y" means X needs a HIGHER vreg number. Declared locals are numbered in REVERSE
@@ -666,6 +674,13 @@ Four measured consequences, each from the function that proved it:
 - `02037d88` — a call that both branches of a block share belongs BEFORE the dispatch, not after.
   Written after, it takes a different callee-saved register and every local behind it shifts.
 
+Additional stock examples: `ov003:0217839c` (288 bytes), bare byte induction declaration before
+base initialization, REGPERM 13 -> MATCH; `ov005:021537bc` (320 bytes), startX/startY
+declarations before endpoint calculations, REGPERM 16 -> MATCH; `ov005:021589f4` (328 bytes),
+bare mode before initialized view, REGPERM 27 -> MATCH after the natural bool contract was
+restored. These support the existing declaration-order rule; they do not establish arbitrary
+changes to assignment order.
+
 ## A LOOP COUNTER'S DECLARATION POSITION COLOURS THE POINTERS AROUND IT
 When callee-saved pointers come out as a register permutation (REGPERM on r7/r8/sb) and permuting
 their own declarations is inert, move the LOOP COUNTER. A counter declared at function scope, placed
@@ -695,6 +710,10 @@ scalars to bare declarations and search their order with
 `ov023:021eeaac` 68 -> 19 that way. Check a hypothesis before writing it:
 `python $KIT/pad/cf_multi.py <file.cpp> ovNNN <addr> <size> <pool_from> '{"moves": [[idx, pos]], "choices": [idx]}' --order`
 reorders or flips mwcc's colouring and prints the node order.
+
+`ov006:02154138` (308 bytes): replacing one unsigned 16 counter reused across three loops with
+separate counter identities/scopes changed REGPERM 59 to stock MATCH. Preserve each loop's
+width, bounds and increments.
 
 ### THE SAME LEVER ORDERS SPILL SLOTS — declare bare, assign where the ROM computes it
 Scalars that spill get stack slots in declaration order, first declared = highest address. A local
@@ -832,6 +851,29 @@ is register NUMBERS around a byte value, retype it before touching anything else
   the frame moves. That one retype closed a 12-byte whole-function shortfall. Inert at the same site:
   chained versus separate assignments, a pointer round-trip, an aggregate holding the flags; and
   `volatile` is worse than inert — it breaks the loop shape.
+
+Recover a natural bool only when the actual callee contract supports it. On `ov005:021589f4`
+(328 bytes), an int special flag converted only at the final call emitted 344 bytes / OVERGEN 16
+with 74 differing bytes; carrying the genuine bool gave 328 bytes / REGPERM 27. The later
+declaration hoist closed that separate residue. Narrowing arbitrary parameters is not this rule.
+
+For a canonical object with an unnamed byte field, inspect its representation through unsigned
+char rather than inventing a nominal view object. On `ov024:021e94c4` (272 bytes), the combined
+unsigned-byte access and explicit int promotion changed SHAPE 7 to MATCH with the required
+LDRB/CMP/BGT. Access spelling and promotion changed together; the cast alone was not isolated.
+
+### PRESERVE ACTUAL OBJECT STORAGE AND ARRAY TRAVERSAL
+Matching bytes do not establish the lifetime of a typed object in a byte buffer. On
+`ov024:021fcc6c` (272 bytes), replacing a char[0xc8] buffer plus a float* write at+c4 with
+actual local storage containing a 0xc4-byte prefix and live float member preserved stock MATCH
+and closed independent lifetime/alignment review. The previous byte difference was already 0;
+this is a semantic repair.
+
+Corresponding signed/unsigned element access does not create a different array for pointer
+traversal. On `ov024:021f418c` (264 bytes), advance short* inside the actual short ids[4] array
+and access each element through its corresponding unsigned type. This corrected the
+unsigned-short traversal while preserving byte MATCH (prior difference 0); it does not authorize
+arbitrary object views.
 
 ## A RESIDUE THAT WILL NOT MOVE IS POINTING AT CODE YOU INVENTED
 When a site resists every form you can think of, stop generating forms and read the whole file for
@@ -1289,6 +1331,12 @@ wrong and a byte-perfect function still fails the gate:
   `strb [rX,#0xf72]`) is a member-array access, `*(unsigned char*)&gs->unk_6fc0[0x7f72 - 0x6fc0]`.
   `((unsigned char*)gs)[0x7f72]` splits the store as `#0x72`+`#0x7f00` into a second register;
   the plain `char` member gives `ldrsb` (`main:02000c9c`).
+
+Use the genuine absolute MMIO port identities when a negative-index pointer spelling changes
+address materialization. On `ov005:02155258` (348 bytes), negative-index end-port stores emitted
+356 bytes / OVERGEN 8 and 34 differing bytes; the observed absolute end-port addresses closed
+MATCH. Preserve volatile access widths and store order; this is a single hardware-port case, not
+an arbitrary pointer rewrite.
 
 ## DUPLICATE POOL WORD — the alias also works for DATA and BSS
 One symbol referenced twice ALWAYS dedupes to a single pool word. Declare a second extern named
