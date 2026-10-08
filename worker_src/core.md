@@ -308,10 +308,12 @@ the two share one constant: the store's zero CSEs into the argument register and
 pointer off r1, which is the whole residue (`021d9340`, 2332B, 8 bytes). Read what the surrounding
 code already materialises before choosing the extra argument.
 
-**The reverse: a STALE argument register means the call passes FEWER arguments** (`02178910`). If r1
-still holds an unrelated pointer at the call and the value you expected there lives only in r2 (for
-an adjacent `strb`), the source passed ONE argument to a callee whose real signature takes two.
-Declare the callee `extern "C"` under its mangled name with the one parameter, as above.
+**A STALE argument register is a diagnostic observation, not a callable-type proof** (`02178910`).
+The historical fewer-argument spelling was associated with stale r1 while the expected value lived
+in r2 for an adjacent `strb`; that observation alone does not establish a valid nominal signature.
+Keep declarations and calls consistent with the independently established canonical callable type.
+Automatic trailing-argument deletion is disabled; its named renderer is for manual diagnosis only,
+and neither an ignored input nor a stale register licenses an incompatible declaration.
 
 **A TWO-REGISTER REGPERM CAN BE A MISSING CALL ARGUMENT — check the arity before permuting.** For a
 callback held in a struct, type it varargs and pass the extra value on the ONE path that has it:
