@@ -262,7 +262,7 @@ def classify(MOD, cands, workdir=None, names=None):
                     elif (S & ~1) != tgt:
                         verdict = 'RELOCWRONG'; break
                 elif typ == 2:                               # ABS32 (.word data/func pointer)
-                    A = int.from_bytes(mine[off:off + 4], 'little')
+                    A = rr['r_addend'] if rr.is_RELA() else int.from_bytes(mine[off:off + 4], 'little')
                     if S is None:
                         verdict = 'RISKY'
                     # ABS32 to a THUMB function has bit0 set by the linker (interworking) -> S+A+1.

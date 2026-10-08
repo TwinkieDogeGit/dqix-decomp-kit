@@ -41,8 +41,9 @@ SPENDERS='supervise\.sh|run_all\.sh|run_module\.sh|run_overlay\.sh|run_main\.sh|
 # `python -u repairsweep.py` drivers survived a --hard stop on 2026-09-05, immediately respawned
 # their colorsweep children, and the kill line reported success. So match the script BASENAMES too,
 # read off disk for the same reason the path match exists -- a list read at run time cannot go stale.
-_cpunames=$(ls "$KIT"/*.py "$KIT"/*.sh 2>/dev/null | xargs -n1 basename 2>/dev/null \
-            | sed 's/\./\\./g' | paste -sd'|' -)
+_cpunames=$(for _cpu_file in "$KIT"/*.py "$KIT"/*.sh; do
+              [ -f "$_cpu_file" ] && basename "$_cpu_file"
+            done | sed 's/\./\\./g' | paste -sd'|' -)
 CPUJOBS="dqix.sp|handwork.evo|permuter\.py${_cpunames:+|$_cpunames}"
 # Monitors and their children. These spend nothing, but a stop that leaves them running is not a
 # stop the user can see: on 2026-08-25 this script printed "none running" for both tiers while two
