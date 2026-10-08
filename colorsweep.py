@@ -2366,7 +2366,12 @@ def r55_load_then_transform(text):
 _R56_PROTO = re.compile(r'(?m)^(\s*extern\s+"C"\s+[^;{()]*?\b([A-Za-z_]\w*)\s*\()([^;{()]*,[^;{()]*)(\)\s*;)')
 
 
-def r56_drop_last_arg(text):
+def diagnostic_r56_drop_last_arg(text):
+    """Render a hypothetical arity deletion for manual diagnosis only.
+
+    Not an admissible rewrite or an automatic RULES candidate. A stale register
+    cannot establish the canonical callable type or justify dropping an input.
+    """
     out = []
     for m in _R56_PROTO.finditer(text):
         name = m.group(2)
@@ -2551,7 +2556,7 @@ def r62_iro_align(text):
     return [("iroalign:%s" % name, text[:m.end(1)] + " __attribute__((aligned(4)))" + text[m.end(1):])]
 
 
-RULES = (r62_iro_align, r61_memset_to_clear,r60_const_extern_table,r59_reuse_earlier_local,r58_split_loop_counter,r57_call_into_preceding_if,r56_drop_last_arg,r43_short_cast_in_add,r44_volatile_split_store, r45_accumulate_or, r46_counter_position,
+RULES = (r62_iro_align, r61_memset_to_clear,r60_const_extern_table,r59_reuse_earlier_local,r58_split_loop_counter,r57_call_into_preceding_if,r43_short_cast_in_add,r44_volatile_split_store, r45_accumulate_or, r46_counter_position,
          r47_ternary_store, r48_inline_index, r49_sink_into_loop, r50_narrow_flag, r51_short_spill,
          r52_inline_address_local, r53_update_in_place, r54_two_def_offset, r55_load_then_transform,
          r1_operand_swap, r2_compound_flip, r3_postinc_migrate, r4_decl_reorder, r5_stmt_swap,

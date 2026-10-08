@@ -718,23 +718,46 @@ def _r54():
     return None
 
 
-@check("r56 drops the trailing argument from an extern \"C\" prototype and every call to it",
-       "A stale pointer left in r1 at a call means the source passed one argument fewer (ov003:02178910)")
+@check("r56 arity-deletion renderer is diagnostic only and absent from automatic routing",
+       "A text-only deletion does not establish a canonical callable contract")
 def _r56():
     C = load("colorsweep")
+    if C.diagnostic_r56_drop_last_arg in C.RULES:
+        return "diagnostic arity deletion is enabled in automatic RULES"
     text = ('extern "C" void g(int a, int b);\n'
             '// USA: func_f\n'
             'extern "C" ARM void f(int* p) {\n'
             '    g(p[0], h(p[1], 2));\n'
             '    g(1, 2);\n}\n')
-    got = dict(C.r56_drop_last_arg(text))
+    if any(label.startswith("droparg:") for label, _ in C.neighbours(text)):
+        return "default routing deleted an unknown trailing argument"
+    got = dict(C.diagnostic_r56_drop_last_arg(text))
     new = got.get("droparg:g")
     if not new:
-        return "r56 produced no candidate"
+        return "diagnostic renderer produced no hypothetical candidate"
     if 'extern "C" void g(int a);' not in new or "g(p[0]);" not in new or "g(1);" not in new:
-        return "r56 did not drop the last parameter and argument everywhere"
-    if C.r56_drop_last_arg('extern "C" void g(int a);\nvoid f() { g(1); }\n'):
-        return "r56 fired on a one-parameter prototype"
+        return "diagnostic renderer did not retain its nested-call text behavior"
+    if C.diagnostic_r56_drop_last_arg('extern "C" void g(int a);\nvoid f() { g(1); }\n'):
+        return "diagnostic renderer fired on a one-parameter prototype"
+    return None
+
+@check("default routing retains DequeueCopyOrSpinWait's used third input",
+       "The committed three-parameter callee stores arg2 into field16; dropping the zero changes meaning")
+def _r56_used_input_default():
+    C = load("colorsweep")
+    prototype = 'extern "C" void func_0205e330(unsigned char* obj, Node* node, short arg2);'
+    call = 'func_0205e330(p, node, 0);'
+    text = ('struct Node { short field16; };\n' + prototype + '\n'
+            'extern "C" void func_0205e330(unsigned char* obj, Node* node, short arg2) {\n'
+            '    node->field16 = arg2;\n}\n'
+            '// USA: func_probe\n'
+            'extern "C" ARM void func_probe(unsigned char* p, Node* node) {\n'
+            '    ' + call + '\n}\n')
+    if C.diagnostic_r56_drop_last_arg in C.RULES:
+        return "diagnostic deletion is enabled for a used input"
+    for label, candidate in C.neighbours(text):
+        if label.startswith("droparg:") or prototype not in candidate or call not in candidate:
+            return "default candidate changed the used-third-input call contract: " + label
     return None
 
 
