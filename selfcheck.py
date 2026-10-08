@@ -12,6 +12,7 @@ import os as _kpos, sys as _kpsys
 _kpsys.path.insert(0, _kpos.path.dirname(_kpos.path.abspath(__file__)))
 import kitpaths as _kp
 import os, re, sys, glob
+import shutil
 
 SP = _kp.SP
 KIT = _kp.KIT
@@ -441,18 +442,16 @@ def _all_parse():
             ast.parse(read(f))
         except SyntaxError as e:
             bad.append(f"{os.path.basename(f)}:{e.lineno}")
-    # `bash` on this box resolves to WSL's bash for a native-Windows Python, and WSL cannot see a
-    # C:/ path -- every shell script then reports "does not parse". Use Git Bash explicitly, and if
-    # no usable bash exists, check only the Python files rather than emit 18 false failures.
-    shell = None
-    for cand in (r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files\Git\usr\bin\bash.exe", "bash"):
-        try:
-            probe = subprocess.run([cand, "-n", f"{KIT}/selfcheck.py"], capture_output=True, text=True)
-            if "No such file or directory" not in (probe.stderr or ""):
-                shell = cand
-                break
-        except OSError:
-            continue
+    # Use the configured tool PATH; a Windows setup puts Git's actual usr/bin Bash first.
+    shell = shutil.which("bash")
+    if not shell:
+        return "bash unavailable for shell syntax checks"
+    try:
+        probe = subprocess.run([shell, "-n", f"{KIT}/selfcheck.py"], capture_output=True, text=True)
+    except OSError as e:
+        return "configured Bash could not start: " + str(e)
+    if "No such file or directory" in (probe.stderr or ""):
+        return "configured Bash cannot read the kit paths"
     if shell:
         for f in _g.glob(f"{KIT}/*.sh"):
             if os.path.basename(f).startswith("_"):
@@ -1042,10 +1041,9 @@ def _fullstop_sees_watchers():
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         time.sleep(1.5)
-        # a bare "bash" resolves to WSL's, which cannot see the Windows filesystem paths we pass
-        sh = "C:/Program Files/Git/bin/bash.exe"
-        if not os.path.exists(sh):
-            sh = "bash"
+        sh = shutil.which("bash")
+        if not sh:
+            return "bash unavailable for fullstop --dry watcher check"
         out = subprocess.run([sh, f"{KIT}/fullstop.sh", "--dry"],
                              capture_output=True, text=True, timeout=180).stdout
         tier3 = out.split("TIER 3")[-1]
