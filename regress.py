@@ -1633,6 +1633,116 @@ def _classify_timer_rela():
     return None
 
 
+def _classify_abs32_regression(C, observed=None):
+    import gc
+    import struct
+    from pathlib import Path
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    export_name = "ClassifierFixture"
+
+    def object_bytes(word, symbol_type, addend, rela=True, relocation=2):
+        strings = b"\0" + export_name.encode() + b"\0Target\0"
+        names = b"\0.text\0.rela.text\0.symtab\0.strtab\0.shstrtab\0"
+        relname = ".rela.text" if rela else ".rel.text"
+        if not rela:
+            names = names.replace(b".rela.text", b".rel.text")
+        symbols = bytes(16) + struct.pack("<IIIBBH", 1, 0, 4, 0x12, 0, 1)
+        symbols += struct.pack("<IIIBBH", strings.index(b"Target\0"), 0, 0, 0x10 | symbol_type, 0, 0)
+        record = struct.pack("<II", 0, (2 << 8) | relocation)
+        if rela:
+            record += struct.pack("<i", addend)
+        sections = [(".text", 1, 6, struct.pack("<I", word), 0, 0, 4, 0),
+                    (relname, 4 if rela else 9, 0, record, 3, 1, 4, 12 if rela else 8),
+                    (".symtab", 2, 0, symbols, 4, 1, 4, 16),
+                    (".strtab", 3, 0, strings, 0, 0, 1, 0),
+                    (".shstrtab", 3, 0, names, 0, 0, 1, 0)]
+        image, headers = bytearray(52), [bytes(40)]
+        for name, kind, flags, data, link, info, align, entsize in sections:
+            image.extend(bytes((-len(image)) % align))
+            offset = len(image)
+            image.extend(data)
+            headers.append(struct.pack("<10I", names.index(name.encode() + b"\0"), kind,
+                                       flags, 0, offset, len(data), link, info, align, entsize))
+        image.extend(bytes((-len(image)) % 4))
+        offset = len(image)
+        image.extend(b"".join(headers))
+        image[:52] = struct.pack("<16sHHIIIIIHHHHHH", b"\x7fELF\x01\x01\x01" + bytes(9),
+                                 1, 40, 1, 0, 0, offset, 0, 52, 0, 0, 40, 6, 5)
+        return bytes(image)
+
+    target = 0x02001000
+    # Controlled ELF inputs exercise classification, not compiler/codegen success.
+    cases = [
+        ("rela_explicit", 0, 1, "data", 8, target + 8, True, 2, "TRUSTED"),
+        ("rela_nonzero", 5, 1, "data", 8, target + 8, True, 2, "RISKY"),
+        ("rela_nonzero_wrong", 5, 1, "data", 8, target + 12, True, 2, "RELOCWRONG"),
+        ("rel_implicit", 8, 1, "data", 0, target + 8, False, 2, "TRUSTED"),
+        ("data_shifted", 0, 1, "data", 0, target + 1, True, 2, "RELOCWRONG"),
+        ("arm_function", 0, 2, "arm", 0, target, True, 2, "TRUSTED"),
+        ("arm_shifted", 0, 2, "arm", 0, target + 1, True, 2, "RELOCWRONG"),
+        ("thumb_function", 0, 2, "thumb", 0, target | 1, True, 2, "TRUSTED"),
+        ("object_is_not_thumb", 0, 1, "thumb", 0, target | 1, True, 2, "RELOCWRONG"),
+        ("notype_is_not_thumb", 0, 0, "thumb", 0, target | 1, True, 2, "RELOCWRONG"),
+        ("missing_isa", 0, 2, "data", 0, target | 1, True, 2, "RISKY"),
+        ("ambiguous_isa", 0, 2, "ambiguous", 0, target | 1, True, 2, "RISKY"),
+        ("missing_isa_wrong", 0, 2, "data", 0, target + 8, True, 2, "RELOCWRONG"),
+        ("thumb_odd_addend", 0, 2, "thumb", 1, target | 1, True, 2, "TRUSTED"),
+        ("thumb_increment_carry", 0, 2, "thumb", 1, target + 2, True, 2, "RELOCWRONG"),
+        ("data_odd_addend", 0, 1, "data", 1, target + 1, True, 2, "TRUSTED"),
+        ("branch_nonzero", 0xeb000000, 2, "arm", -8, 0xeb0003fe, True, 1, "TRUSTED"),
+    ]
+    failures = []
+    with tempfile.TemporaryDirectory(prefix="dqix classifier inputs ") as d:
+        repo = Path(d)
+        config = repo / "config/usa/arm9"
+        extract = repo / "extract/usa/arm9"
+        config.mkdir(parents=True)
+        extract.mkdir(parents=True)
+        (config / "delinks.txt").write_text(".text start:0x02000000 end:0x02000004 kind:code\n\n")
+        for name, word, symbol_type, isa, addend, pristine, rela, relocation, expected in cases:
+            binding = "kind:function(%s,size=0x4)" % isa if isa in ("arm", "thumb") else "kind:data"
+            rows = f"{export_name} kind:function(arm,size=0x4) addr:0x02000000\n"
+            rows += "Target %s addr:0x02001000\n" % binding
+            if isa == "ambiguous":
+                rows += "Target kind:function(thumb,size=0x4) addr:0x02001000\n"
+            (config / "symbols.txt").write_text(rows)
+            (extract / "arm9.bin").write_bytes(struct.pack("<I", pristine))
+            image = object_bytes(word, symbol_type, addend, rela, relocation)
+
+            def compiler(command, **kwargs):
+                Path(command[command.index("-o") + 1]).write_bytes(image)
+                return SimpleNamespace(returncode=0)
+
+            with patch.object(C, "REPO", d), patch.object(C, "SP", d), \
+                    patch.object(C, "_CTX", {}), patch.object(C, "_headers", return_value=None), \
+                    patch.object(C.buildcfg, "lcf_symbols", return_value={}), \
+                    patch.object(C.subprocess, "run", side_effect=compiler):
+                if hasattr(C, "_TARGET_ISA"):
+                    with patch.object(C, "_TARGET_ISA", {}):
+                        result = C.classify("main", {"02000000": "void fixture();\n"}, workdir=str(repo / name))
+                else:
+                    result = C.classify("main", {"02000000": "void fixture();\n"}, workdir=str(repo / name))
+            actual = result.get("02000000")
+            if observed is not None:
+                observed.append({"case": name, "expected": expected, "actual": actual,
+                                 "elf_symbol_type": symbol_type, "curated_isa": isa,
+                                 "word": word, "addend": addend, "pristine": pristine,
+                                 "rela": rela, "relocation": relocation})
+            if actual != expected:
+                failures.append("%s: %s, expected %s" % (name, actual, expected))
+        gc.collect()
+    return "; ".join(failures) or None
+
+
+@check("the classifier checks RELA pool contents and genuine Thumb function pointers",
+       "masked ABS32 words with nonzero RELA storage, shifted data/ARM targets or an "
+       "arithmetic +1 carry were accepted as TRUSTED")
+def _classify_abs32_inputs():
+    return _classify_abs32_regression(load("classify"))
+
+
 # ------------------------------------------------------- END-TO-END (slow, compiles)
 # The tests above pin what each rewrite RENDERS. They cannot tell you whether the sweep still
 # CRACKS a function: adding a rule enlarges the neighbourhood, so a winning path that used to fit
