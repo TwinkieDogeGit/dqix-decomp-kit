@@ -13,6 +13,11 @@
 The per-function tools run `tools/mwccarm/<version>/mwccarm.exe` from the decomp directly. They are
 untested on anything but Windows.
 
+On Windows, verify `python`, `ninja`, and `bash` in the process environment. Use Git's actual
+`usr/bin/bash.exe`, not the WSL `bash.exe` in System32 or Git's `bin/bash.exe` launcher.
+Killing the launcher after a subprocess timeout may leave its child holding output pipes
+open. Put Git's `usr/bin` before other Bash providers on PATH; keep these settings process-local.
+
 ## Layout on disk
 
     <parent>/

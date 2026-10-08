@@ -74,12 +74,17 @@ the copy.
 | `dqix-hand-match <addr>` | close one function in this session | all |
 | `dqix-status` | where things are: fleet, coverage, what moved, what needs a decision | all |
 | `dqix-stop` | stop everything now and verify nothing survived | all |
+| `dqix-coordinate` | coordinate native agents, bounded crack/evolve experiments, and shared findings | native-agent hosts |
 | `dqix-plan` | run the standing plan: one function at a time, gate it, land it or record why | Claude Code |
 | `dqix-continue` | a fresh session after a limit, a crash or a long session | Claude Code |
 
 The fleet's workers are Claude Code sessions (`claude -p`), so running the fleet needs the Claude Code
 CLI whichever agent operates the kit. Do not start the fleet, a workflow or any paid worker unless
 the user asks.
+
+For a coordinator-operated adaptation using Codex or another host's native agents, see
+[docs/NATIVE_AGENTS.md](docs/NATIVE_AGENTS.md). It does not run the Claude workflow JavaScript or
+start a background fleet. Keep the same reservation, gate, integration and promotion rules.
 
 ## Hard rules
 

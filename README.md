@@ -96,6 +96,7 @@ explains every step.
 - [docs/WORKFLOW.md](docs/WORKFLOW.md) — one function from address to commit
 - [docs/IMPROVEMENT_LOOP.md](docs/IMPROVEMENT_LOOP.md) — how every crack becomes a rule or automation the next session gets for free
 - [docs/FLEET.md](docs/FLEET.md) — the autonomous pipeline, knobs, stopping, cost
+- [docs/NATIVE_AGENTS.md](docs/NATIVE_AGENTS.md) — native-agent coordination and bounded crack/evolve procedures for hosts such as Codex
 - [docs/LESSONS.md](docs/LESSONS.md) — compiler facts and pipeline rules learned the hard way
 - [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) — sending matches and tool fixes back
 
@@ -106,8 +107,8 @@ quickstart. [AGENTS.md](AGENTS.md) holds the instructions and hard rules every a
 
 | agent | loads |
 |---|---|
-| Claude Code | `CLAUDE.md` (imports `AGENTS.md`), all five skills in `.claude/skills/`, the `dqix-crack` and `dqix-evolve` workflows in `.claude/workflows/` |
-| Codex and other Agent Skills readers | `AGENTS.md`, and `dqix-hand-match`, `dqix-status`, `dqix-stop` from `.agents/skills/`, which `kit_init.py` fills |
+| Claude Code | `CLAUDE.md` (imports `AGENTS.md`), skills in `.claude/skills/`, the `dqix-crack` and `dqix-evolve` workflows in `.claude/workflows/` |
+| Codex and other Agent Skills readers | `AGENTS.md`, and `dqix-hand-match`, `dqix-status`, `dqix-stop`, `dqix-coordinate` from `.agents/skills/`, which `kit_init.py` fills |
 | any other agent | `AGENTS.md`; the per-function flow in `docs/WORKFLOW.md` needs nothing but a shell |
 
 `dqix-plan`, `dqix-continue`, the workflows and the fleet use Claude Code features and stay Claude
