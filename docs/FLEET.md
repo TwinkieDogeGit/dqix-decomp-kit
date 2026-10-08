@@ -89,7 +89,7 @@ Environment, read when the script starts:
 
 | variable | default | effect |
 |---|---|---|
-| `INTEGRATE_EVERY` | 1800 | seconds between integration passes |
+| `INTEGRATE_EVERY` | 600 | seconds between integration passes |
 | `INTEGRATE_PENDING` | 8 | staged files that trigger an integration early |
 | `SWEEP_EVERY` | 3600 | seconds between repair sweeps; 0 disables |
 | `PRESWEEP_EVERY` | 300 | seconds between `presweep_watch.sh` passes |
