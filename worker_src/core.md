@@ -976,6 +976,11 @@ When the target RE-LOADS a value you are holding in a register:
   not `n + 1` — that supplies the extra mov/ldr the target has (`0209f030`).
 
 ## CONTROL-FLOW SHAPE — the lever for predication, tail-sharing, and branch order
+
+- **One soft-float conversion after a branch means the arms produce a float** (`main:02017d90`).
+  Assign each arm's rounded value to one `float` local, then cast that local to `int` after the
+  branch. Casting and storing inside each arm duplicates `_ffix` setup and OVERGENs by 4 bytes;
+  the shared conversion matches with the default compiler.
 mwcc predicates small arms and cross-jumps shared tails. The SHAPE of the source decides both, and
 this family closed more large functions than any expression change:
 
