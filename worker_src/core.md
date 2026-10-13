@@ -979,6 +979,11 @@ When the target RE-LOADS a value you are holding in a register:
 mwcc predicates small arms and cross-jumps shared tails. The SHAPE of the source decides both, and
 this family closed more large functions than any expression change:
 
+**SWITCH ARM ORDER CONTROLS PHYSICAL BLOCK ORDER** (`0206cbcc`). When a jump-table switch
+has the right operations but wrong branch destinations, reorder its case bodies to match the ROM
+before changing expressions. Keeping every body unchanged and sorting `-1, 3, 0, 1, 2, 4` into
+numeric order changed MATCH into LOOP-SHAPE 32 with four differing branch targets.
+
 **A CONSTANT THE ROM ISSUES BEFORE AN ALU OP WAS NOT IN THAT BLOCK** (`021e3178`). The first-pass
 scheduler breaks ties by: critical-path slack, successors made ready, path height, then operand class
 (an instruction that reads a register beats `mov rX,#imm` / a pool load), then IR order. So in one
