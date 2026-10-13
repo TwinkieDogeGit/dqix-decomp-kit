@@ -307,6 +307,11 @@ register) and not a `static inline` init (too big: mwcc emits it out of line) (`
 
 ## SCRATCH REGISTERS (r0-r3, ip, lr) ANSWER ONLY TO OPERAND ORDER
 
+- **A copy-loop pointer and counter can be members of one local state object** (`main:0201647c`).
+  Keep `short* source` and `int index` in a typed local struct when separate locals swap r3/r5.
+  Initialize and advance the same fields at the same sites; replacing only that state object
+  with separate scalar locals gives REGPERM 7, while the grouped fields match.
+
 **ARGUMENT CONSTANTS SET BEFORE THE ADDRESS THEY SHOULD FOLLOW = TYPED CONSTANT LOCALS.** An `int`
 local holding a literal is propagated into every block, so the call gets `mov rN, #imm`, which loses
 the pass-1 tie to an address `add`. An enum-typed local defined in an earlier block is not propagated
