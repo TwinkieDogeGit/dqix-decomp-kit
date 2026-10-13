@@ -913,6 +913,11 @@ Each was a byte-exact replacement for an invented construct; write these first.
   (`02046e08`, `020559cc`, `0208f68c`).
 
 ## BREAKING CSE — re-read what the ROM re-reads
+When the ROM copies both words of a coordinate pair but only changes one, read the pair through
+a union's 64-bit member, split the value, then store both named coordinates (`021bec00`). Replacing
+only that packed read with separate `x`/`y` reads lets mwcc delete the unchanged `x` store;
+the landed function changes from MATCH to UNDERGEN 8. No volatile is needed.
+
 **A RELOAD THE ROM KEEPS IS AN ACCESSOR OR A REAL FIELD, NEVER `volatile`.** Bind an inline accessor's
 result to a local before the call (`BaseCombatStats* stats = GetBaseStats(c);`, `02069158`,
 `0206918c`; `int a = o->GetF7c(); int b = o->GetF80();`, `020bd88c`; three header accessors in place
