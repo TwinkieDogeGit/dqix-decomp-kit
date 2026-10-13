@@ -643,6 +643,11 @@ loop body. A `flag = present & (1 << current);` before the `for` stores before t
 no declaration or statement order moves it (`ov023:021eeaac`, the last 19 bytes).
 
 ## TYPE WIDTH IS A REGALLOC LEVER — `int` vs `unsigned char` on the same value
+- **An extra soft-float conversion can mean one payload word has two types** (`main:02056d80`).
+  Model a keyframe word used as both a float channel value and an unsigned duration with a union
+  containing `float y` and `unsigned int duration`. Convert the duration member directly to float;
+  casting the floating member through unsigned int adds a conversion and OVERGENs by 4 bytes.
+
 A byte-typed local sourced from a `ldrb` changes which callee-saved pair mwcc picks. When the diff
 is register NUMBERS around a byte value, retype it before touching anything else:
 
