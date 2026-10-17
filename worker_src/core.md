@@ -1356,6 +1356,9 @@ copy inlines to the ROM's `ldr [pc] / ldm / stm`.
   trick is doing `% 4`, never `% 3` (`0215e250`, OVERGEN 8 to size-exact).
 - a skip inside a `for` belongs in the loop's own increment clause, not an `if { i++; continue; }`
   body -- the clause form branches straight to the shared tail the ROM shares (`0215e250`).
+- `strcpy(p, "lit")` is open-coded only when `strcpy` is declared in a header NAMED `string.h`:
+  `#include <string.h>`. The same prototype in any other header or in the file stays a `bl strcpy`,
+  so literal byte stores with no strcpy call in the ROM mean that include (`020026b4`, `02002cb4`).
 
 ## BITFIELDS ARE REAL MEMBERS, NOT MASKS
 `(x & 0xf) == 0` emits `tst` + `bne`. The target's `ldrb / lsl#0x1c / lsrs#0x1c / bne` comes from an
