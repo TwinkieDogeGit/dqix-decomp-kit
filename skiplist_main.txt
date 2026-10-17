@@ -1,4 +1,1 @@
-02005ea0 MSL, needs the MSL build (-O4,p on sp1p5 or later), which configure.py does not define yet
-020042a8 MSL, needs the MSL build (-O4,p on sp1p5 or later), which configure.py does not define yet
 0200df80 CW runtime ExceptionHandler, exact only at runtime flags -O4,p + exception_terminate, which configure.py does not define yet
-02003418 MSL __pformatter, byte-exact only at -O4,p / -O3,p, needs the MSL build, which configure.py does not define yet
