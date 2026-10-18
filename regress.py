@@ -6284,13 +6284,14 @@ def _sdk_build_routing():
              (("main", "020aeec8"), ["sdk", "game"]), (("main", "020d6bac"), ["sdk", "game"]),
              (("main", "020d6c0c"), ["game"]), (("main", "020d3160", "D:/r/src/Combat/Main/a.cpp"), ["sdk"]),
              (("main", "02000c9c", "D:/r/src/NitroSDK/Main/a.cpp"), ["sdk"]),
-             (("main", "02000c9c", "src\\NitroSDK\\a.cpp"), ["sdk"]), (("031", "022192c0"), ["game"]),
+             (("main", "02000c9c", "src\\NitroSDK\\a.cpp"), ["sdk"]), (("031", "022192c0"), ["network"]),
+             (("031", "02242c54"), ["network", "game"]), (("031", "0224599c"), ["game"]),
              (("main", "020042a8"), ["msl"]), (("main", "0200df80"), ["runtime"]),
              (("main", "0200f398"), ["game"]), (("main", "02000c9c", "src/MSL/Main/a.cpp"), ["msl"])]
     for args, want in cases:
         if B.builds_for(*args) != want:
             return "builds_for%r = %r, want %r" % (args, B.builds_for(*args), want)
-    if B.lib_dir("main", "sdk") != "src/NitroSDK/Main" or B.lib_dirs("031"):
+    if B.lib_dir("main", "sdk") != "src/NitroSDK/Main" or B.lib_dirs("031") != ["src/NetworkLib/Overlay_31"]:
         return "lib dirs: %r %r" % (B.lib_dir("main", "sdk"), B.lib_dirs("031"))
     for name, (_root, ver, flags) in B.LIBRARIES.items():
         if B.build_flags(name) != B.FLAGS + flags or not B.build_cc(name).endswith(ver + "/mwccarm.exe"):
