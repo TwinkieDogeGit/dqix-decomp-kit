@@ -58,6 +58,7 @@ _W = {"mnem": 10000, "over": 10 ** 8}
 
 
 _RUN = []
+_EXT = [".cpp"]
 
 
 def _rundir():
@@ -93,7 +94,7 @@ def _wdiff():
 
 def score(text, module, addr, tag):
     """Compile `text` against the ROM slot; return (bytes_differing, headline)."""
-    path = os.path.join(_rundir(), "%s.cpp" % tag)
+    path = os.path.join(_rundir(), tag + _EXT[0])
     # NEVER leave a taggable candidate in the pool. ov_recover.gather() picks up any .cpp
     # under the scratchpad carrying a `// USA:` tag, so an intermediate variant -- most of
     # which are WRONG by construction -- would enter the wave as a real candidate. Defusing
@@ -104,7 +105,7 @@ def score(text, module, addr, tag):
     try:
         return _score_file(path, module, addr)
     finally:
-        for leftover in (path, path[:-4] + "_cd.o"):
+        for leftover in (path, os.path.splitext(path)[0] + "_cd.o"):
             try:
                 os.remove(leftover)
             except OSError:
@@ -2146,6 +2147,7 @@ def main():
 
 
 def sweep(pool, width, module, addr, src, depth, budget, apply_best):
+    _EXT[0] = ".c" if src.lower().endswith(".c") else ".cpp"
     base = open(src, encoding="utf-8").read()
     spent = 0
     best_bytes, head = score(base, module, addr, "base")

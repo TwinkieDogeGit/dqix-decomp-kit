@@ -67,7 +67,7 @@ git checkout HEAD -- include/ config/ src/ 2>/dev/null
 # 3. QUARANTINE (preserve, don't delete) untracked .cpp in OTHER module dirs — they pollute configure.
 #    ALL of src/, not src/Combat/ alone: the update-compiler base put ARM9 main's sources in
 #    src/World, src/Util, src/System and six more, and a half-written file there reds every module.
-git status --porcelain | awk '/\?\?.*\.cpp/{print $2}' | grep '^src/' \
+git status --porcelain | awk '/\?\?.*\.(cpp|c)$/{print $2}' | grep '^src/' \
   | grep -vE "^($(IFS='|'; echo "${OWNDIRS[*]}"))/" | while read -r f; do
   mv "$f" "$Q/$(basename "$f")" 2>/dev/null; done
 # A candidate's address is the one on its `// USA:` tag, never just the first func_ symbol in the
@@ -78,7 +78,7 @@ addr_of() {
   local a
   a=$(grep -oE "// ${REGION_TAG}: ${TAGPRE}[0-9a-fA-F]{8}" "$1" 2>/dev/null | head -1 \
       | grep -oE '[0-9a-fA-F]{8}$' | tr 'A-F' 'a-f')
-  [ -z "$a" ] && a=$(basename "$1" | grep -oE '[0-9a-fA-F]{8}\.cpp$' | cut -c1-8 | tr 'A-F' 'a-f')
+  [ -z "$a" ] && a=$(basename "$1" | grep -oE '[0-9a-fA-F]{8}\.(cpp|c)$' | cut -c1-8 | tr 'A-F' 'a-f')
   echo "$a"
 }
 
@@ -112,7 +112,7 @@ done
 rm -f "$_tracked_tmp"
 # BULK-TRACKED-END
 _own_cpps=()
-for _d in "${OWNDIRS[@]}"; do _own_cpps+=("$_d"/*.cpp); done
+for _d in "${OWNDIRS[@]}"; do _own_cpps+=("$_d"/*.cpp "$_d"/*.c); done
 for f in "${_own_cpps[@]}"; do
   [ -e "$f" ] || continue
   [ -n "${_fw_tracked["$f"]+present}" ] && continue   # tracked: leave it
@@ -128,7 +128,7 @@ done
 #    function is never re-offered forever.
 STAGE="$SP/staging/$LBL"
 if [ -d "$STAGE" ]; then
-  for f in "$STAGE"/*.cpp; do
+  for f in "$STAGE"/*.cpp "$STAGE"/*.c; do
     [ -e "$f" ] || continue
     a=$(addr_of "$f")
     if [ -n "$a" ] && grep -qx "$a" "$Q/.done_$OV" 2>/dev/null; then

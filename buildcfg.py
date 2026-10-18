@@ -157,6 +157,10 @@ def build_flags(name):
     return FLAGS + BUILDS[name][1]
 
 
+def lang_flags(path):
+    return ["-lang=c"] if str(path).lower().endswith(".c") else []
+
+
 def builds_for(mod, addr, path=None):
     own = path_build(path) if path is not None else "game"
     if own != "game":

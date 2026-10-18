@@ -428,7 +428,7 @@ for f, addr in pending:
             open(f, "w", encoding="utf-8", newline="\n").write(ftxt)
 
     obj = f"{SP}/_int_{LBL}_{os.getpid()}.o"
-    r = subprocess.run(buildcfg.tool_command(cc_for(f)) + flags_for(f) + ["-c", cf, "-o", obj], capture_output=True, text=True)
+    r = subprocess.run(buildcfg.tool_command(cc_for(f)) + flags_for(f) + buildcfg.lang_flags(f) + ["-c", cf, "-o", obj], capture_output=True, text=True)
     if r.returncode != 0:
         verdicts.append(("COMPILE", addr))
         print("COMPILE FAIL", f, (r.stdout + r.stderr)[-300:])

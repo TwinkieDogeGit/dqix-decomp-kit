@@ -6218,6 +6218,12 @@ def _sdk_build_routing():
        "every match was written to the module's own directory, which the decomp compiles with the "
        "game build, so an SDK-build match failed the wave's ninja check")
 def _recover_places_sdk():
+    got = _run_place({})
+    if got != ["game/func_02000c9c.cpp", "sdk/func_020d3160.cpp"]:
+        return "placed %r" % got
+
+
+def _run_place(cand_ext):
     import ast
     src = open(f"{KIT}/ov_recover.py", encoding="utf-8").read()
     node = next(n for n in ast.parse(src).body if isinstance(n, ast.FunctionDef) and n.name == "place")
@@ -6226,16 +6232,57 @@ def _recover_places_sdk():
         text = {a: '// USA: func_%s\nextern "C" ARM void func_%s() {}\n' % (a, a) for a in ("020d3160", "02000c9c")}
         from types import SimpleNamespace
         ns = {"re": re, "os": os, "cands": text, "_build": {"020d3160": "sdk", "02000c9c": "game"},
+              "cand_ext": cand_ext,
               "buildcfg": SimpleNamespace(lib_dir=lambda mod, b: {"sdk": sdk}[b]), "MOD": "main",
               "SRCDIR": game, "TAG": "USA", "TAGPRE": "func_", "_FOREIGN_STEMS": set(),
               "tracked": lambda p: False, "sanitize": lambda t, a: ("func_" + a, t),
               "ASMPAT": re.compile("(?!)"), "ASM_ALLOW": set(), "carry_cc_override": lambda a, p: None}
         exec(compile(ast.Module(body=[node], type_ignores=[]), "place", "exec"), ns)
         ns["place"](["020d3160", "02000c9c"])
-        got = sorted(os.path.relpath(os.path.join(d, f), root).replace("\\", "/")
-                     for d, _s, fs in os.walk(root) for f in fs)
-        if got != ["game/func_02000c9c.cpp", "sdk/func_020d3160.cpp"]:
-            return "placed %r" % got
+        return sorted(os.path.relpath(os.path.join(d, f), root).replace("\\", "/")
+                      for d, _s, fs in os.walk(root) for f in fs)
+
+
+@check("a .c source compiles as C in the gate, the sweep and the classifier, and the wave places it as .c",
+       "every gate tool compiled a source as C++ whatever its extension, so __minus_dec 02009edc, whose "
+       "canonical MSL C block-copies a nested struct where C++ copies it member by member, gated OVERGEN "
+       "and could only land behind an invented union")
+def _c_sources_compile_as_c():
+    import contextlib
+    import io
+    import subprocess
+    addr = "02009edc"
+    c_text = open(f"{KIT}/regress_fixtures/MinusDec_02009edc.c", encoding="utf-8").read()
+    cpp_text = c_text.replace("ARM void func_", 'extern "C" ARM void func_')
+    with tempfile.TemporaryDirectory(dir=f"{SP}/handwork", ignore_cleanup_errors=True) as d:
+        verdicts = {}
+        for ext, text in ((".c", c_text), (".cpp", cpp_text)):
+            src = os.path.join(d, "t" + ext)
+            with open(src, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(text)
+            r = subprocess.run([sys.executable, f"{KIT}/wgate.py", "main", addr, src], capture_output=True,
+                               text=True, cwd=_kp.REPO, env={**os.environ, "WGATE_ALLOW_COMMITTED": "1",
+                                                             "WGATE_SESSION": "regress"})
+            verdicts[ext] = (r.stdout + r.stderr).strip().splitlines()[-1:] or [""]
+        if verdicts[".c"] != ["MATCH"] or verdicts[".cpp"] == ["MATCH"]:
+            return "wgate on 02009edc: .c %r, .cpp %r" % (verdicts[".c"], verdicts[".cpp"])
+        C = load("colorsweep")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = {ext: C.sweep(None, 1, "main", addr, os.path.join(d, "t" + ext), 0, 1, False)
+                  for ext in (".c", ".cpp")}
+        C._drop_rundir()
+        if rc[".c"] != 0 or rc[".cpp"] == 0:
+            return "colorsweep base on 02009edc: .c exit %d, .cpp exit %d" % (rc[".c"], rc[".cpp"])
+    cls = load("classify")
+    got = {ext: cls.classify("main", {addr: text}, names={addr: "t" + ext}).get(addr)
+           for ext, text in ((".c", c_text), (".cpp", cpp_text))}
+    if got[".c"] != "TRUSTED" or got[".cpp"] == "TRUSTED":
+        return "classify on 02009edc: %r" % got
+    placed = _run_place({"02000c9c": ".c"})
+    if placed != ["game/func_02000c9c.c", "sdk/func_020d3160.cpp"]:
+        return "place() with a .c candidate wrote %r" % placed
+    return None
 
 
 @check("the gate and classify match OS_VSNPrintf on the SDK build only, and name that build",

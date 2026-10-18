@@ -37,7 +37,7 @@ for name in ("skiplist_main.txt", "skiplist_ov.txt"):
 # Every directory an integrator reads: staging/<mod>/ for integrate_fast, and untracked src/ for
 # both. hold_*/ and quarantine/ are deliberately NOT purged -- ov_recover filters those during
 # gather(), and they exist to preserve attempts.
-targets = sorted(glob.glob(f"{SP}/staging/*/*.cpp"))
+targets = sorted(glob.glob(f"{SP}/staging/*/*.cpp") + glob.glob(f"{SP}/staging/*/*.c"))
 untracked = subprocess.run(["git", "ls-files", "--others", "--exclude-standard", "--", "src"],
                            capture_output=True, text=True).stdout.split()
 targets += [f for f in untracked if f.endswith((".cpp", ".c"))]

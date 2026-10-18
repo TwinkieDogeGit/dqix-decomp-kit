@@ -34,7 +34,8 @@ sha1_ok() {
 REGION="$(python "$KIT/buildcfg.py" --region)" || exit 2
 REGION_TAG="${REGION^^}"
 
-n=$(ls "$SP"/staging/*/*.cpp 2>/dev/null | wc -l)
+staged() { compgen -G "$SP/staging/*/*.cpp" || compgen -G "$SP/staging/*/*.c"; } >/dev/null
+n=$( (compgen -G "$SP/staging/*/*.cpp"; compgen -G "$SP/staging/*/*.c") | wc -l)
 [ "$n" -eq 0 ] && { echo "nothing staged"; exit 0; }
 echo "=== integrate_fast $(date '+%m-%d %H:%M'): $n staged ===" >> "$LOG"
 
@@ -68,7 +69,7 @@ done
 
 SECURE="$SP/secure_queue"; mkdir -p "$SECURE"
 _held=0
-for f in "$SP"/staging/*/*.cpp; do
+for f in "$SP"/staging/*/*.cpp "$SP"/staging/*/*.c; do
   [ -e "$f" ] || continue
   a=$(basename "$f" | grep -o '0[0-9a-f]\{7\}' | head -1)
   [ -z "$a" ] && continue
@@ -89,7 +90,7 @@ for f in $(git ls-files --others --exclude-standard -- src | grep -E '\.(cpp|c)$
 done
 [ "$_held" -gt 0 ] && echo "held back $_held secure-area stub(s) for one-per-wave landing" | tee -a "$LOG"
 
-ls "$SP"/staging/*/*.cpp >/dev/null 2>&1 || { echo "nothing left to batch" | tee -a "$LOG"; exit 0; }
+staged || { echo "nothing left to batch" | tee -a "$LOG"; exit 0; }
 
 # PRE-CLASSIFY, BECAUSE ONE BAD CANDIDATE REDS THE WHOLE COMBINED BUILD. That is the inherent cost
 # of building everything at once, and it is avoidable: classify compiles each candidate and verifies
@@ -108,7 +109,7 @@ bad = f"{SP}/staging_unclassified"
 os.makedirs(bad, exist_ok=True)
 by = collections.defaultdict(dict)
 paths = {}
-for p in glob.glob(f"{SP}/staging/*/*.cpp"):
+for p in glob.glob(f"{SP}/staging/*/*.cpp") + glob.glob(f"{SP}/staging/*/*.c"):
     tag = os.path.basename(os.path.dirname(p))
     mod = tag[2:] if tag.startswith("ov") else "main"
     m = re.search(rf"// {buildcfg.REGION.upper()}: func_(?:ov\d+_)?([0-9a-fA-F]{{8}})", open(p, encoding="utf-8", errors="ignore").read())
@@ -148,14 +149,15 @@ _mark=$(wc -l < "$LOG")
 # linker aborted with "Previously defined" -- two combined builds went RED that way on 2026-09-09,
 # each costing a full rollback to per-module. One shared implementation so the two cannot drift.
 python "$KIT/stagepurge.py" --apply >> "$LOG" 2>&1
-ls "$SP"/staging/*/*.cpp >/dev/null 2>&1 || { echo "$(date '+%H:%M') everything staged was already landed" | tee -a "$LOG"; exit 0; }
+staged || { echo "$(date '+%H:%M') everything staged was already landed" | tee -a "$LOG"; exit 0; }
 for d in "$SP"/staging/*/; do
   [ -d "$d" ] || continue
   tag=$(basename "$d"); mod=${tag#ov}
-  ls "$d"*.cpp >/dev/null 2>&1 || continue
+  { compgen -G "$d*.cpp" || compgen -G "$d*.c"; } >/dev/null || continue
   if [ "$mod" = "main" ]; then dst="$REPO/src/Combat/Main"; else dst="$REPO/src/Combat/Overlay_$((10#$mod))"; fi
   mkdir -p "$dst"
-  for f in "$d"*.cpp; do
+  for f in "$d"*.cpp "$d"*.c; do
+    [ -e "$f" ] || continue
     lb=$(awk -v m="$mod" -v b="$(basename "$f")" '$1 == m && $2 == b {print $3}' "$SP/wlog/stage_lib.txt" 2>/dev/null)
     if [ -n "$lb" ]; then
       libdst="$REPO/$(python "$KIT/srcdir.py" --lib "$mod" "$lb")"
@@ -228,7 +230,7 @@ if [ "$green" = "1" ]; then
     # integrator had dropped -- 02097280 was skipped because a tracked src/ file already defined it,
     # and then its staged copy went with the five that did land, leaving no trace of either.
     _kept=0
-    for f in "$SP"/staging/*/*.cpp; do
+    for f in "$SP"/staging/*/*.cpp "$SP"/staging/*/*.c; do
       [ -e "$f" ] || continue
       a=$(grep -oE "// ${REGION_TAG}: func_(ov[0-9]+_)?[0-9a-fA-F]{8}" "$f" | head -1 \
           | grep -oE '[0-9a-fA-F]{8}$' | tr 'A-F' 'a-f')

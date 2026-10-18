@@ -11,7 +11,7 @@ DIR="$SP/staging/$SUB"
 REJ="$SP/staging_rejected/$SUB"
 mkdir -p "$REJ"
 pass=0; fail=0
-for f in "$DIR"/*.cpp; do
+for f in "$DIR"/*.cpp "$DIR"/*.c; do
     [ -f "$f" ] || continue
     addr=$(grep -oEm1 "USA: func_(ov[0-9]+_)?[0-9a-fA-F]{8}" "$f" | grep -oE "[0-9a-fA-F]{8}$")
     if [ -z "$addr" ]; then

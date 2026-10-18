@@ -172,7 +172,6 @@ def classify(MOD, cands, workdir=None, names=None, builds=None):
     pristine, base, symaddr, sizes, textrng = _ctx(MOD)
     out = {}
     keys = {}
-    src = f"{work}/c.cpp"
     obj = f"{work}/c.o"
     for addr, txt, _b in [(a, t, b) for a, t in cands.items() for b in buildcfg.builds_for(MOD, a)]:
         if out.get(addr) in ('TRUSTED', 'RISKY'):
@@ -191,8 +190,9 @@ def classify(MOD, cands, workdir=None, names=None, builds=None):
             # Not in any CODE section (rodata/data/bss) -> not an emittable function. Parked, never struck.
             out[addr] = 'SECTION'; continue
         _want = _want or '.text'
+        src = f"{work}/c.c" if buildcfg.lang_flags((names or {}).get(addr) or "") else f"{work}/c.cpp"
         _cc = cc_for((names or {}).get(addr) or src) if _b == "game" else buildcfg.build_cc(_b)
-        _bflags = buildcfg.build_flags(_b) + flags_for((names or {}).get(addr) or src)
+        _bflags = buildcfg.build_flags(_b) + flags_for((names or {}).get(addr) or src) + buildcfg.lang_flags(src)
         if _headers():
             _flags = " ".join(_bflags)
             keys[addr] = "\t".join((MOD, addr, str(slot), _want, _cc, _headers(),

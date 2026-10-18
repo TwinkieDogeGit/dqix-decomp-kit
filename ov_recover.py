@@ -62,8 +62,15 @@ def tag_addr(txt):
 SRCDIRS = [SRCDIR] + buildcfg.lib_dirs(MOD)
 
 
+SOURCE_GLOBS = ("*.cpp", "*.c")
+
+
+def sources_in(d):
+    return [f for pat in SOURCE_GLOBS for f in glob.glob(f"{d}/{pat}")]
+
+
 def src_cpps():
-    return [f for d in SRCDIRS for f in glob.glob(f"{d}/*.cpp")]
+    return [f for d in SRCDIRS for f in sources_in(d)]
 
 
 _BOUND = None
@@ -218,12 +225,13 @@ def clean():
             _a = tag_addr(_txt)          # module-correct tag regex; None for another module's file
             if _a:
                 os.makedirs(_hold, exist_ok=True)
-                _dst = f"{_hold}/{_a}.cpp"
+                _ext = os.path.splitext(f)[1]
+                _dst = f"{_hold}/{_a}{_ext}"
                 if not os.path.exists(_dst):
                     shutil.copy2(f, _dst)
                 elif open(_dst, encoding='utf-8', errors='ignore').read() != _txt:
                     # keep BOTH attempts; the sweep dedupes by (addr, content-hash) anyway
-                    shutil.copy2(f, f"{_hold}/{_a}_{hashlib.md5(_txt.encode()).hexdigest()[:6]}.cpp")
+                    shutil.copy2(f, f"{_hold}/{_a}_{hashlib.md5(_txt.encode()).hexdigest()[:6]}{_ext}")
         except OSError:
             pass
         _rm(f)
@@ -253,7 +261,7 @@ def sweep_foreign():
     moved = 0
     # ALL of src/, not src/Combat/ alone: the update-compiler base put ARM9 main's sources in
     # src/World, src/Util, src/System and six more, and configure.py globs every one of them.
-    for f in glob.glob("src/**/*.cpp", recursive=True):
+    for f in [f for pat in SOURCE_GLOBS for f in glob.glob(f"src/**/{pat}", recursive=True)]:
         p = f.replace(chr(92), "/")
         if any(p.startswith(d + "/") for d in SRCDIRS) or tracked(p):
             continue
@@ -497,7 +505,7 @@ for d in STAGING:
     if d == "src":  # steady-state: fresh untracked worker output in src
         gather(f for f in src_cpps() if not tracked(f))
     else:
-        gather(glob.glob(f"{SP}/{d}/*.cpp"))
+        gather(sources_in(f"{SP}/{d}"))
 
 # PRESERVE (IRONCLAD): snapshot EVERY untracked .cpp in SRCDIR to a hold dir BEFORE any git/clean
 # touches src — INDEPENDENT of the candidate filter. clean() deletes ALL untracked .cpp; if we only
@@ -557,14 +565,18 @@ def place(addrs):
                 # A plain C definition with no ARM/THUMB keyword is real work; name the file after the
                 # address, which is what place() falls back to on any collision anyway.
                 name = f"{TAGPRE}{a}"
-                print(f"  PLACE-FALLBACK {a}: no ARM/THUMB keyword, naming file {name}.cpp")
+                print(f"  PLACE-FALLBACK {a}: no ARM/THUMB keyword, naming file {name}{cand_ext.get(a, '.cpp')}")
         d = buildcfg.lib_dir(MOD, _build[a]) if _build.get(a, "game") != "game" else SRCDIR
         os.makedirs(d, exist_ok=True)
-        bn = f"{d}/{name}.cpp"
-        if tracked(bn) or bn in used or os.path.exists(bn) or name in _FOREIGN_STEMS:
-            bn = f"{d}/{name}_{a}.cpp"
-        if bn.rsplit('/', 1)[-1][:-4] in _FOREIGN_STEMS or bn in used:   # still not unique -> force it
-            bn = f"{d}/{TAGPRE}{a}.cpp"
+        ext = cand_ext.get(a, ".cpp")
+        stems = {os.path.splitext(p)[0] for p in used}
+        taken = lambda stem: f"{d}/{stem}" in stems or any(
+            tracked(f"{d}/{stem}{e}") or os.path.exists(f"{d}/{stem}{e}") for e in (".cpp", ".c"))
+        bn = f"{d}/{name}{ext}"
+        if taken(name) or name in _FOREIGN_STEMS:
+            bn = f"{d}/{name}_{a}{ext}"
+        if os.path.splitext(bn.rsplit('/', 1)[-1])[0] in _FOREIGN_STEMS or bn in used:   # still not unique -> force it
+            bn = f"{d}/{TAGPRE}{a}{ext}"
         if f"// {TAG}: {TAGPRE}{a}" not in txt:
             _defpat = ('(?m)^(?:extern "C"\\s+)?'
                        '(?:__declspec\\([^)]*\\)\\s*)?'
@@ -827,17 +839,19 @@ sys.path.insert(0, KIT)
 from classify import classify
 _cls = {}
 _build = {}
+cand_ext = {}
 for _a in sorted(variants):
-    _best, _bv, _bb = None, None, None
+    _best, _bv, _bb, _bn = None, None, None, None
     for _i, _txt in enumerate(variants[_a]):      # try each held attempt; first TRUSTED wins
         _nm = (vnames.get(_a) or [None] * (_i + 1))[_i] if _i < len(vnames.get(_a, [])) else None
         _builds = {}
         _v = classify(MOD, {_a: _txt}, names={_a: _nm} if _nm else None, builds=_builds).get(_a, 'COMPILE')
         if _bv is None or _v == 'TRUSTED':
-            _best, _bv, _bb = _txt, _v, _builds.get(_a)
+            _best, _bv, _bb, _bn = _txt, _v, _builds.get(_a), _nm
         if _v == 'TRUSTED': break
     _cls[_a] = _bv
     _build[_a] = _bb
+    cand_ext[_a] = ".c" if buildcfg.lang_flags(_bn or "") else ".cpp"
     cands[_a] = _best
 # DRIFT PARKING: funcs already proven to break the link layout (not the bytes). Re-placing them every
 # wave costs an extra red gate each time and nothing else, so park them for a few waves. Not permanent —
@@ -869,7 +883,7 @@ print(f"[{SUF}] classify: TRUSTED {len(TRUSTED)} RISKY {len(RISKY)} BAD {dict(_C
 os.makedirs(f"{SP}/wlog", exist_ok=True)
 with open(f"{SP}/wlog/integ_{SUF}.txt", "a") as _f:
     for _a, _v in sorted(BAD.items()): _f.write(f"{_v} {_a}\n")
-for _fp in glob.glob(f"{HOLD}/*.cpp"):
+for _fp in sources_in(HOLD):
     _m = tag_addr(open(_fp, encoding='utf-8', errors='ignore').read())
     if _m and _m in BAD:
         try: os.remove(_fp)
@@ -884,7 +898,7 @@ ASMPARK = [a for a in TRUSTED + RISKY if a not in ASM_ALLOW and ASMPAT.search(ca
 if ASMPARK:
     _parkdir = f"{SP}/asm_park_{SUF}"
     os.makedirs(_parkdir, exist_ok=True)
-    for _fp in glob.glob(f"{HOLD}/*.cpp"):
+    for _fp in sources_in(HOLD):
         if tag_addr(open(_fp, encoding='utf-8', errors='ignore').read()) in ASMPARK:
             shutil.move(_fp, f"{_parkdir}/{os.path.basename(_fp)}")
     for _a in ASMPARK: cands.pop(_a, None)
@@ -895,7 +909,7 @@ if ASMPARK:
 import plausible as _plausible
 IMPLAUSIBLE = [a for a in TRUSTED + RISKY if _plausible.blocking(cands.get(a, ''))]
 if IMPLAUSIBLE:
-    for _fp in glob.glob(f"{HOLD}/*.cpp"):
+    for _fp in sources_in(HOLD):
         _a = tag_addr(open(_fp, encoding='utf-8', errors='ignore').read())
         if _a in IMPLAUSIBLE and _plausible.hold(_fp, MOD, _a):
             os.remove(_fp)
@@ -983,7 +997,7 @@ if drifted: print(f"  drift culprits parked: {sorted(set(drifted)-done_final)}")
 # Prune held copies of funcs that are now COMMITTED — git is the source of truth for those, and the hold
 # dir is re-read (and its candidates recompiled) on every single wave. ov031's had grown to 1619 files.
 _pruned = 0
-for _fp in glob.glob(f"{HOLD}/*.cpp") + glob.glob(f"{SP}/quarantine/*.cpp"):
+for _fp in sources_in(HOLD) + sources_in(f"{SP}/quarantine"):
     _m = tag_addr(open(_fp, encoding='utf-8', errors='ignore').read())
     if _m and _m in done_final:
         try: os.remove(_fp); _pruned += 1

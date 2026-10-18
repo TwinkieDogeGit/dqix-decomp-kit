@@ -297,7 +297,7 @@ def _gate(OV, ADDR, SRC, SEC, out, env, build=None, state=None):
         else:
             _cc, _bf = (cc_for(SRC, env), _flags) if build is None else \
                 (buildcfg.build_cc(build), buildcfg.build_flags(build))
-            _cmd=buildcfg.tool_command(_cc)+_bf+flags_for(SRC)+["-c",SRC,"-o",_OBJ]
+            _cmd=buildcfg.tool_command(_cc)+_bf+flags_for(SRC)+buildcfg.lang_flags(SRC)+["-c",SRC,"-o",_OBJ]
         r=subprocess.run(_cmd,capture_output=True,text=True,cwd=REPO)
         if r.returncode!=0:
             _err=(r.stdout+r.stderr).strip().replace("\t"," ")
