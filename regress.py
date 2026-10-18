@@ -6286,6 +6286,7 @@ def _sdk_build_routing():
              (("main", "02000c9c", "D:/r/src/NitroSDK/Main/a.cpp"), ["sdk"]),
              (("main", "02000c9c", "src\\NitroSDK\\a.cpp"), ["sdk"]), (("031", "022192c0"), ["network"]),
              (("031", "02242c54"), ["network", "game"]), (("031", "0224599c"), ["game"]),
+             (("main", "020d39dc"), ["game"]), (("main", "020d3d90"), ["game"]), (("main", "020d3dcc"), ["sdk"]),
              (("main", "020042a8"), ["msl"]), (("main", "0200df80"), ["runtime"]),
              (("main", "0200f398"), ["game"]), (("main", "02000c9c", "src/MSL/Main/a.cpp"), ["msl"])]
     for args, want in cases:

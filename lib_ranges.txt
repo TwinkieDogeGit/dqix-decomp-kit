@@ -1,17 +1,20 @@
 usa main 02001578 0200c578 msl
 usa main 0200c578 0200f398 runtime
 usa main 020aeec8 020af20c sdk either
-usa main 020af20c 020d6bac sdk
+usa main 020af20c 020d39dc sdk
+usa main 020d3dcc 020d6bac sdk
 usa main 020d6bac 020d6c0c sdk either
 eur main 02001578 0200c578 msl
 eur main 0200c578 0200f398 runtime
 eur main 020aeed8 020af21c sdk either
-eur main 020af21c 020d6bbc sdk
+eur main 020af21c 020d39ec sdk
+eur main 020d3ddc 020d6bbc sdk
 eur main 020d6bbc 020d6c1c sdk either
 jpn main 02001494 0200c43c msl
 jpn main 0200c43c 0200f25c runtime
 jpn main 020b0994 020b0cd8 sdk either
-jpn main 020b0cd8 020d8608 sdk
+jpn main 020b0cd8 020d5440 sdk
+jpn main 020d5828 020d8608 sdk
 jpn main 020d8608 020d8614 sdk either
 usa 031 02200160 02242c54 network
 usa 031 02242c54 02243144 network either
