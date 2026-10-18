@@ -1236,6 +1236,11 @@ together. A switch arm that does only what "no arm" does should not be written.
   to get the target's table dispatch.
 
 ## LOOP FORM — mwcc -O2 does NOT rotate loops
+- An unsigned cursor's entry guard can select a different branch despite equivalent bounds.
+  For `unsigned int offset = 0;`, keep `if (offset < size) do { ... } while (offset < size);`
+  when the ROM skips entry with `bls`. Replacing only that guard with `if (size != 0)` selects
+  `beq` and leaves a one-byte residue (`ov031:022227ec`).
+
 A `while` emits a `b` to a bottom test; it will never become the target's top-tested do-while. Pick
 the form directly:
 - guarded do-while `if (n != 0) { do { ... } while (n != 0); }` for a top-tested loop (`022378e4` —
