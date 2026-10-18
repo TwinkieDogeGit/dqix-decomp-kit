@@ -139,3 +139,4 @@
 0200bbe0  func_0200bbe0                      CW runtime _dgr, double compare returning flags through mrs/msr, no C form (pokediamond RUNTIME_f_cmp.s)
 0200bdb4  func_0200bdb4                      CW runtime _dls, double compare returning flags through mrs/msr, no C form (pokediamond RUNTIME_f_cmp.s)
 0200cf24  func_0200cf24                      CW runtime _ll_mul, the helper the compiler calls for a 64-bit `*`, asm in every ref (pokediamond RUNTIME_ll_mul.s)
+0200f2ec  func_0200f2ec                      CW runtime __TransferControl: loads callee-saved regs and sp from the throw context and jumps, asm void in the original (TWEWY ExceptionHandler.cpp)

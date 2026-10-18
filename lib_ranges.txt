@@ -13,3 +13,9 @@ jpn main 0200c43c 0200f25c runtime
 jpn main 020b0994 020b0cd8 sdk either
 jpn main 020b0cd8 020d8608 sdk
 jpn main 020d8608 020d8614 sdk either
+usa 031 02200160 02242c54 network
+usa 031 02242c54 02243144 network either
+eur 031 02200160 02242c54 network
+eur 031 02242c54 02243144 network either
+jpn 031 02200940 02243434 network
+jpn 031 02243434 02243924 network either
