@@ -799,7 +799,8 @@ local folds to `cmp r0,#1`. mwcc's propagation pass only replaces a variable who
 type as its assignment. An enum local read in an `int` compare never folds, so it stays a register.
 Declare and assign it next to its use, inside the loop:
 `WcmcMsg found = WCMC_MSG_FOUND; if (msg == found)` after the receive (`0224599c`). Assigned before
-the loop, the same locals colour differently.
+the loop, the same locals colour differently. One `mov rN,#1` shared by both arms of an `if` whose
+arms are not predicated is the same lever: `OnFlag on = ON_FLAG;` before the `if` (`02204e38`).
 
 ## A FRAME THAT IS THE WRONG SIZE IS NEVER A COLOURING PROBLEM
 If `sub sp, sp, #N` disagrees with the ROM, every sp-relative byte in the function is wrong and no
