@@ -6,6 +6,7 @@ import buildcfg
 
 SHF_ALLOC = 0x2
 SHF_EXECINSTR = 0x4
+UNLINKED = (".exception", ".exceptix")
 LINE = re.compile(r"^(\S+) kind:(\S+) addr:0x([0-9a-fA-F]+)(.*)$")
 RELOC = re.compile(r"^from:0x([0-9a-fA-F]+) kind:(\S+) to:0x([0-9a-fA-F]+)(?: add:(\S+))? module:(\S+)$")
 
@@ -89,7 +90,8 @@ def plan(elf, text_index, slot, func_addr, pristine, base, module, cfg_dir, repo
     texts = [(text_index, slot, func_addr)] + list(extra_texts)
     sections = list(elf.iter_sections())
     owned = {i: s for i, s in enumerate(sections)
-             if s["sh_flags"] & SHF_ALLOC and not s["sh_flags"] & SHF_EXECINSTR and s["sh_size"]}
+             if s["sh_flags"] & SHF_ALLOC and not s["sh_flags"] & SHF_EXECINSTR and s["sh_size"]
+             and s.name not in UNLINKED}
     if not owned:
         return None
     symtab = elf.get_section_by_name(".symtab")

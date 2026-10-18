@@ -1512,7 +1512,7 @@ def _postsweep_detached():
     return None
 
 
-def _compile_elf(text, repo, postcompile=False, rev=None):
+def _compile_elf(text, repo, postcompile=False, rev=None, extra=()):
     import io
     import subprocess
     import tarfile
@@ -1529,8 +1529,8 @@ def _compile_elf(text, repo, postcompile=False, rev=None):
                 tar.extractall(d)
             flags = [os.path.join(d, "include") if f == "include" and flags[i - 1] == "-i" else f
                      for i, f in enumerate(flags)]
-        r = subprocess.run(buildcfg.tool_command(buildcfg.CC) + flags + ["-c", src, "-o", obj], cwd=repo,
-                           capture_output=True, text=True)
+        r = subprocess.run(buildcfg.tool_command(buildcfg.CC) + flags + list(extra) + ["-c", src, "-o", obj],
+                           cwd=repo, capture_output=True, text=True)
         if r.returncode:
             return "COMPILE " + (r.stdout + r.stderr)[-200:]
         if postcompile:
@@ -1598,6 +1598,28 @@ def _dataown_replay():
     p = run(committed, bytes(rom))
     if not (isinstance(p, str) and p.startswith("DATA-BYTEDIFF")):
         return "a wrong initial byte was not refused: %s" % str(p)[:160]
+    return None
+
+
+@check("the data planner leaves a runtime object's exception tables to the link, which drops them",
+       "the ROM's exception index is empty (020e5920..020e5920), yet the planner required a ROM home for "
+       "every data section, so 0200ee38's try/catch, byte-exact with -Cpp_exceptions on, was refused "
+       "DATA-UNPLACED .exceptix")
+def _dataown_skips_exception_tables():
+    import buildcfg
+    import dataown
+    text = open(f"{KIT}/regress_fixtures/DestroyArray_0200ee38.cpp", encoding="utf-8").read()
+    elf = _compile_elf(text, buildcfg.REPO, extra=["-O4,p", "-char", "unsigned", "-Cpp_exceptions", "on"])
+    if isinstance(elf, str):
+        return elf
+    names = {s.name for s in elf.iter_sections()}
+    if not {".exception", ".exceptix"} <= names:
+        return "the fixture no longer emits exception tables: %s" % sorted(names)
+    index = next(i for i, s in enumerate(elf.iter_sections()) if s.name == ".text")
+    p = dataown.plan(elf, index, 0x5c, 0x0200ee38, b"", 0x02000000, "main", "config/usa/arm9",
+                     buildcfg.REPO, "src/Runtime/Main/func_0200ee38.cpp", {}, "", "", {})
+    if p is not None:
+        return "the planner on 0200ee38's EH object: %r" % (p if isinstance(p, str) else sorted(p))
     return None
 
 
