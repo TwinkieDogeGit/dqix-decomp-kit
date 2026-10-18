@@ -926,6 +926,9 @@ Each was a byte-exact replacement for an invented construct; write these first.
   `data_X[row].a`. Three externs load three pool literals in the wrong order; one row array restores it (`021fb490`).
 - An offset added to reach an embedded sub-object is a member accessor, `Sub* GetSub() { return &sub; }`
   (`021e62a8`, `0215707c`).
+- Two words loaded together and stored through `r0`, whose caller passes a stack temporary, is a struct
+  returned by value: `FSFileID NNS_SndArcGetFileID(void) { return arc->fileId; }`. Written as an out
+  parameter the stores fuse into `stm` (`020bd88c`).
 - A null test on `&node->allocator` is a null test on a member accessor's result:
   `SafeAllocator* GetAllocator() { return &allocator; }`, `SafeAllocator* const allocator =
   node->GetAllocator(); if (!allocator) return 0;` (`02164084`; `0208bf78` without the `const`).
@@ -1238,6 +1241,10 @@ the form directly:
 - `while (node)` with a break plus a redundant post-loop null test (`021982ac`).
 - Test at the TOP and a `b` back to it at the bottom, with no guard: `for (;;) { if (!a || b) break; ... }`
   (`0218b5fc`, 137 bytes to MATCH in one edit; the wrong loop form also recoloured the whole function).
+- An SDK-build loop left unrotated, with `mul`/`mla` recomputed each pass, touches an object the SDK
+  declares `ATTRIBUTE_ALIGN(n)`. Declare the extern the same way, `extern SNDCommand data_02112a60[256]
+  __attribute__((aligned(32)));`. A function that touches an aligned object skips loop optimisation
+  (`020d2220`, SND_CommandInit).
 
 ## EXTERN "C" AND MANGLING — the WRONG-SYMBOL trap
 Whether a declaration mangles decides both the emitted symbol and the argument widths. Get this
