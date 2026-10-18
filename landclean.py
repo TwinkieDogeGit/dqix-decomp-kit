@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import sys
 
@@ -16,11 +17,14 @@ LANDED = f"{CLEAN}/landed.tsv"
 REJECTED = f"{CLEAN}/rejected.tsv"
 REGIONS = ("usa", "jpn", "eur")
 COUPLED = ("addrname", "remangle")
+SWAP = {".cpp": ".c", ".c": ".cpp"}
 USAGE = """bash landclean.sh [reviewed.txt]
 
 With reviewed.txt (one repo path per line), only those rows land; the rest stay queued.
 Lands rewritten sources of functions already on decomp-matching. $SP/clean/manifest.tsv lists
-`<repo path>\\t<blob it replaces>\\t<why>`; $SP/clean/<repo path> is the rewrite. Under the wave lock,
+`<repo path>\\t<blob it replaces>\\t<why>`; $SP/clean/<repo path> is the rewrite. A rewrite saved under
+the other source extension ($SP/clean/<stem>.c for a <stem>.cpp row, or the reverse) replaces the file
+under that name and renames it in every region's delinks.txt. Under the wave lock,
 from the published tip of the integration tree: drops a row whose file changed since its blob,
 applies the rest, requires ninja check and sha1 in usa/jpn/eur (built at once), sets aside the rows a
 red build's log names (or half the batch when it names none) until what stays builds green as one
@@ -55,11 +59,31 @@ def rows():
     return out
 
 
+def target(rel):
+    stem, ext = os.path.splitext(rel)
+    other = stem + SWAP.get(ext, ext)
+    return other if not os.path.isfile(f"{CLEAN}/{rel}") and os.path.isfile(f"{CLEAN}/{other}") else rel
+
+
+def delinks_naming(tree, tip, rel):
+    out = git(tree, "grep", "-l", "-F", f"{rel}:", tip, "--", "config")[1].split()
+    return [p.split(":", 1)[1] for p in out if p.endswith("delinks.txt")]
+
+
+def touched(tree, tip, entries):
+    paths = []
+    for rel, _, _ in entries:
+        paths.append(rel)
+        if target(rel) != rel:
+            paths += [target(rel)] + delinks_naming(tree, tip, rel)
+    return list(dict.fromkeys(paths))
+
+
 def split_stale(tree, entries):
     current = gitread.blob_ids(tree, [f"HEAD:{rel}" for rel, _, _ in entries])
     fresh, stale = [], []
     for rel, base, why in entries:
-        missing = not os.path.isfile(f"{CLEAN}/{rel}")
+        missing = not os.path.isfile(f"{CLEAN}/{target(rel)}")
         (stale if current.get(f"HEAD:{rel}") != base or missing else fresh).append((rel, base, why))
     return fresh, stale
 
@@ -114,10 +138,10 @@ def blame(tree, part, red):
     tags = {}
     for rel, _, _ in part:
         try:
-            with open(f"{CLEAN}/{rel}", encoding="utf-8", errors="ignore") as fh:
-                tags[rel] = culprits.tag_of(fh.read()) or ("", "")
+            with open(f"{CLEAN}/{target(rel)}", encoding="utf-8", errors="ignore") as fh:
+                tags[target(rel)] = culprits.tag_of(fh.read()) or ("", "")
         except OSError:
-            tags[rel] = ("", "")
+            tags[target(rel)] = ("", "")
     named = set()
     for region, log in red.items():
         named |= {path for _, _, path, _ in culprits.name(log, tags)}
@@ -127,7 +151,7 @@ def blame(tree, part, red):
                     named |= {src for src, _ in regionsync.BLOCK.findall(fh.read())}
             except OSError:
                 pass
-    return {entry for entry in part if entry[0] in named}
+    return {entry for entry in part if target(entry[0]) in named}
 
 
 def verdict(tree, tip, part, fresh):
@@ -154,18 +178,31 @@ def apply(tree, tip, entries, fresh=()):
     if back:
         dirty = set(git(tree, "diff", "--name-only", "-z")[1].split("\0"))
         back = [rel for rel in back if rel in dirty]
+    swapped = {rel for rel, _, _ in list(fresh) + list(entries) if target(rel) != rel}
+    for rel in swapped:
+        if os.path.exists(f"{tree}/{target(rel)}"):
+            os.remove(f"{tree}/{target(rel)}")
+        back += [rel] + delinks_naming(tree, tip, rel)
     if back:
         run(tree, "git", "checkout", "-q", "--pathspec-from-file=-", "--pathspec-file-nul", tip,
-            stdin="".join(f"{rel}\0" for rel in back))
+            stdin="".join(f"{rel}\0" for rel in dict.fromkeys(back)))
     for rel in part:
-        data = wanted(rel)
+        new = target(rel)
+        data = wanted(new)
+        if new != rel:
+            os.remove(f"{tree}/{rel}")
+            for cfg in delinks_naming(tree, tip, rel):
+                with open(f"{tree}/{cfg}", encoding="utf-8", newline="") as fh:
+                    text = fh.read()
+                with open(f"{tree}/{cfg}", "w", encoding="utf-8", newline="") as fh:
+                    fh.write(re.sub(rf"(?m)^{re.escape(rel)}:", lambda m: f"{new}:", text))
         try:
-            with open(f"{tree}/{rel}", "rb") as fh:
+            with open(f"{tree}/{new}", "rb") as fh:
                 if fh.read() == data:
                     continue
         except OSError:
             pass
-        with open(f"{tree}/{rel}", "wb") as fh:
+        with open(f"{tree}/{new}", "wb") as fh:
             fh.write(data)
 
 
@@ -210,7 +247,7 @@ def main():
         print(f"RED {rel}: a region does not build with it")
     apply(tree, tip, good, fresh)
     if good:
-        stage(tree, [rel for rel, _, _ in good])
+        stage(tree, touched(tree, tip, good))
         if git(tree, "commit", "-q", "-m", f"Clean {len(good)} matched source(s)")[0]:
             print("REFUSED: nothing to commit")
             return 1

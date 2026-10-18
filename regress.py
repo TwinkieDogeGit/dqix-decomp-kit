@@ -3143,6 +3143,69 @@ def _landclean_settle():
     return None
 
 
+@check("landclean lands a rewrite saved as .c over a landed .cpp, renaming it in every delinks.txt",
+       "landclean wrote a rewrite only over the same path, so canonical MSL C for 02009edc and 02001bdc, "
+       "which matches only compiled as C, could not replace the invented unions their C++ files carry")
+def _landclean_swaps_language():
+    import subprocess
+    lc = load("landclean")
+    with tempfile.TemporaryDirectory(prefix="landclean_swap_", dir=f"{SP}/handwork",
+                                     ignore_cleanup_errors=True) as root:
+        tree, clean = f"{root}/tree", f"{root}/clean"
+
+        def git(*args):
+            return subprocess.run(["git", "-C", tree, "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                                  capture_output=True, text=True).stdout.strip()
+
+        for d in (f"{tree}/src", f"{tree}/config/usa", f"{tree}/config/eur", f"{clean}/src"):
+            os.makedirs(d)
+        block = "src/a.cpp:\n    complete\n    .text start:0x02000000 end:0x02000004\n"
+        for region in ("usa", "eur"):
+            with open(f"{tree}/config/{region}/delinks.txt", "w", encoding="utf-8", newline="\n") as fh:
+                fh.write("src/b.cpp:\n    complete\n\n" + block)
+        for name in ("a", "b"):
+            with open(f"{tree}/src/{name}.cpp", "w", encoding="utf-8") as fh:
+                fh.write(name)
+        with open(f"{clean}/src/a.c", "w", encoding="utf-8") as fh:
+            fh.write("// USA: func_a\nint a; // note\n")
+        git("init", "-q", "-b", "main")
+        git("add", "-A")
+        git("commit", "-qm", "base")
+        tip = git("rev-parse", "HEAD")
+        row = ("src/a.cpp", git("rev-parse", "HEAD:src/a.cpp"), "")
+        old = lc.CLEAN
+        lc.CLEAN = clean
+        try:
+            fresh, stale = lc.split_stale(tree, [row])
+            if fresh != [row]:
+                return "split_stale() set aside a row whose rewrite is saved as .c: %r" % stale
+            lc.apply(tree, tip, [], fresh)
+            lc.apply(tree, tip, [row], fresh)
+            lc.stage(tree, lc.touched(tree, tip, [row]))
+            git("commit", "-qm", "clean")
+        finally:
+            lc.CLEAN = old
+        files = sorted(git("ls-files").split())
+        if files != ["config/eur/delinks.txt", "config/usa/delinks.txt", "src/a.c", "src/b.cpp"]:
+            return "after landing the .c rewrite the tree holds %r" % files
+        for region in ("usa", "eur"):
+            text = git("show", f"HEAD:config/{region}/delinks.txt")
+            if "src/a.c:" not in text or "src/a.cpp:" in text or "src/b.cpp:" not in text:
+                return "%s delinks.txt after the swap: %r" % (region, text)
+        if "note" in git("show", "HEAD:src/a.c"):
+            return "the swapped rewrite kept its worker comment"
+        lc.CLEAN = clean
+        try:
+            lc.apply(tree, tip, [], [row])
+        finally:
+            lc.CLEAN = old
+        if os.path.exists(f"{tree}/src/a.c") or not os.path.exists(f"{tree}/src/a.cpp") or \
+                "src/a.cpp:" not in open(f"{tree}/config/usa/delinks.txt", encoding="utf-8").read():
+            return "apply() left a set-aside swap half applied: a.c %s, a.cpp %s" % (
+                os.path.exists(f"{tree}/src/a.c"), os.path.exists(f"{tree}/src/a.cpp"))
+    return None
+
+
 @check("landclean sets aside the rows a red build names instead of halving the batch",
        "landclean.sh took 28 minutes for 61 rows with one bad row: settle() halved blind and rebuilt every "
        "region for each half, though the failure log named the file")
