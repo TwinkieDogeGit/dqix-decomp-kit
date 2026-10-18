@@ -792,6 +792,15 @@ the object, put the static in an inline accessor so it has a linkable name:
 guessed size, or the true size at file scope, leaves the residue byte-identical (`ov026:021d8ba0`).
 Keep every other global `extern`.
 
+## A COMPARE AGAINST A HOISTED REGISTER IS AN ENUM-TYPED LOCAL
+Symptom: the ROM materialises small constants before a loop (`mov r7,#1; mov r6,#4`) and compares
+against the registers (`cmp r0,r7`), where every literal, `#define`, enum constant, `const` or `int`
+local folds to `cmp r0,#1`. mwcc's propagation pass only replaces a variable whose use has the same
+type as its assignment. An enum local read in an `int` compare never folds, so it stays a register.
+Declare and assign it next to its use, inside the loop:
+`WcmcMsg found = WCMC_MSG_FOUND; if (msg == found)` after the receive (`0224599c`). Assigned before
+the loop, the same locals colour differently.
+
 ## A FRAME THAT IS THE WRONG SIZE IS NEVER A COLOURING PROBLEM
 If `sub sp, sp, #N` disagrees with the ROM, every sp-relative byte in the function is wrong and no
 register rewrite and no colorsweep run can touch it. Fix the frame FIRST, and measure it:
